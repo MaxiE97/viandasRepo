@@ -11,7 +11,7 @@ class User(Base):
     email = Column(String, unique=True, index=True)
     hashed_password = Column(String)  # Nuevo campo
     is_active = Column(Boolean, default=True)  # Nuevo campo
-
+    role = Column(String, default="user")
     # Relationship to Sales
     sales = relationship("Sale", back_populates="user")
 
