@@ -1,5 +1,5 @@
 # app/models/models.py
-from sqlalchemy import Column, Integer, String, Boolean, Date, ForeignKey
+from sqlalchemy import Column, Integer, String, Boolean, Date, ForeignKey, Float
 from sqlalchemy.orm import relationship
 from config import Base
 
@@ -30,3 +30,15 @@ class Sale(Base):
 
     # Relationship to User (Customer)
     user = relationship("User", back_populates="sales")
+
+class Product(Base):
+    __tablename__ = "products"
+
+    id = Column(Integer, primary_key=True, index=True)
+    nombre = Column(String, nullable=False)
+    precioActual = Column(Float, nullable=False)
+    detalle = Column(String, nullable=True)
+    mostrarEnSistema = Column(Boolean, default=True)
+    foto = Column(String, nullable=True)  # Puedes almacenar la URL de la foto o la ruta del archivo
+    stock = Column(Integer, nullable=False)
+    stockMinimo = Column(Integer, nullable=False)

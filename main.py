@@ -14,6 +14,8 @@ from api.deps import get_db, get_current_user
 from models.models import User, Sale
 from schemas.schemas import UserCreate, SaleCreate, Token, User as UserSchema
 from config import engine
+from schemas.schemas import ProductCreate, Product as ProductSchema  # Importar el esquema Pydantic
+from models.models import Product as ProductModel  # Importar el modelo SQLAlchemy
 
 User.metadata.create_all(bind=engine)
 Sale.metadata.create_all(bind=engine)
@@ -100,3 +102,51 @@ def read_my_sales(
 ):
     sales = db.query(Sale).filter(Sale.user_id == current_user.id).all()
     return sales
+
+@app.post("/products/", response_model=ProductSchema)  # Usar el esquema Pydantic para la respuesta
+def create_product(
+    product: ProductCreate, 
+    current_user: User = Depends(get_current_user), 
+    db: Session = Depends(get_db)
+):
+    if current_user.role != "admin":
+        raise HTTPException(status_code=403, detail="Not enough permissions")
+    
+    # Crear un nuevo producto usando el modelo SQLAlchemy
+    new_product = ProductModel(
+        nombre=product.nombre,
+        precioActual=product.precioActual,
+        detalle=product.detalle,
+        mostrarEnSistema=product.mostrarEnSistema,
+        foto=product.foto,
+        stock=product.stock,
+        stockMinimo=product.stockMinimo
+    )
+    
+    db.add(new_product)
+    db.commit()
+    db.refresh(new_product)
+    return new_product  # Retornar el nuevo producto
+
+@app.put("/products/{product_id}", response_model=ProductSchema)  # Usar el esquema Pydantic para la respuesta
+def update_product(
+    product_id: int, 
+    product: ProductCreate, 
+    current_user: User = Depends(get_current_user), 
+    db: Session = Depends(get_db)
+):
+    if current_user.role != "admin":
+        raise HTTPException(status_code=403, detail="Not enough permissions")
+    
+    # Buscar el producto en la base de datos usando el modelo SQLAlchemy
+    db_product = db.query(ProductModel).filter(ProductModel.id == product_id).first()  # Cambiar a ProductModel
+    if not db_product:
+        raise HTTPException(status_code=404, detail="Product not found")
+    
+    # Actualizar los atributos del producto
+    for key, value in product.dict().items():
+        setattr(db_product, key, value)
+    
+    db.commit()
+    db.refresh(db_product)
+    return db_product  # Retornar el producto actualizado

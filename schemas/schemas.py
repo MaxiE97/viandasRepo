@@ -32,3 +32,22 @@ class SaleCreate(BaseModel):
 
     class Config:
         orm_mode = True
+
+
+class ProductBase(BaseModel):
+    nombre: str
+    precioActual: float
+    detalle: Optional[str] = None
+    mostrarEnSistema: Optional[bool] = True
+    stock: int
+    stockMinimo: int
+    foto: Optional[str] = None  # Agregar el campo foto
+
+class ProductCreate(ProductBase):
+    pass
+
+class Product(ProductBase):
+    id: int
+
+    class Config:
+        orm_mode = True
