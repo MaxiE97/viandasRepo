@@ -42,3 +42,12 @@ class Product(Base):
     foto = Column(String, nullable=True)  # Puedes almacenar la URL de la foto o la ruta del archivo
     stock = Column(Integer, nullable=False)
     stockMinimo = Column(Integer, nullable=False)
+
+class LineOfSale(Base):
+    __tablename__ = "lineOfSale"
+
+    id = Column(Integer, primary_key=True, index=True)
+    cantidad = Column(Integer, nullable=False)
+    numeroDeLinea = Column(Integer, nullable=False)
+    precio = Column(Float, nullable=False)
+ 

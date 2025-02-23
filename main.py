@@ -149,4 +149,4 @@ def update_product(
     
     db.commit()
     db.refresh(db_product)
-    return db_product  # Retornar el producto actualizado
+    return db_product  
