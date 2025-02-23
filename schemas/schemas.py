@@ -1,4 +1,4 @@
-from pydantic import BaseModel, EmailStr
+from pydantic import BaseModel, EmailStr, Field
 from datetime import date
 from typing import Optional, List
 
@@ -71,10 +71,8 @@ class Product(ProductBase):
 class LineOfSaleBase(BaseModel):
     cantidad: int
     numeroDeLinea: int
-    precio: float
 
 class LineOfSaleCreate(LineOfSaleBase):
-    sale_id: int
     product_id: int
 
 class LineOfSale(LineOfSaleBase):
@@ -82,3 +80,17 @@ class LineOfSale(LineOfSaleBase):
 
     class Config:
         orm_mode = True
+
+
+
+# --------------------
+# Sale with LineOfSale
+# --------------------
+
+class SaleWithLines(BaseModel):
+    observation: Optional[str] = None
+    lineas: List[LineOfSaleCreate] = Field(..., alias="line_of_sales")
+
+    class Config:
+        from_attributes = True  # Para Pydantic v2
+        allow_population_by_field_name = True
