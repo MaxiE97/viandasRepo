@@ -3,7 +3,7 @@ from fastapi import FastAPI
 from config import engine
 from models.models import User, Sale
 from routes import auth, users, sales, products, admin, lines
-
+from fastapi.middleware.cors import CORSMiddleware
 # Crear las tablas en la base de datos
 User.metadata.create_all(bind=engine)
 Sale.metadata.create_all(bind=engine)
@@ -13,6 +13,16 @@ app = FastAPI(
     description="API description",
     openapi_tags=[{"name": "auth", "description": "Authentication"}],
 )
+
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["http://localhost:3000"],
+    allow_credentials = True,
+    allow_methods=["*"],
+    allow_headers = ["*"]
+)
+
 
 # Incluir los routers
 tags_metadata = [

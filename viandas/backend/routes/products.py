@@ -8,6 +8,10 @@ from models.models import User
 
 router = APIRouter()
 
+@router.get("/", response_model=list[ProductSchema])
+def list_products(db: Session = Depends(get_db)):
+    return db.query(Product).all()
+
 @router.post("/", response_model=ProductSchema)
 def create_product(
     product: ProductCreate,
@@ -21,3 +25,5 @@ def create_product(
     db.commit()
     db.refresh(new_product)
     return new_product
+
+

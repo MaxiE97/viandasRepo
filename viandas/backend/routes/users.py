@@ -3,7 +3,7 @@ from fastapi import APIRouter, HTTPException, Depends
 from sqlalchemy.orm import Session
 from models.models import User
 from schemas.schemas import UserCreate, User as UserSchema
-from api.deps import get_db
+from api.deps import get_db, get_current_user
 from core.security import get_password_hash
 
 router = APIRouter()
@@ -19,3 +19,7 @@ def create_user(user: UserCreate, db: Session = Depends(get_db)):
     db.commit()
     db.refresh(db_user)
     return db_user
+
+@router.get("/me", response_model=UserSchema)
+def get_current_user_info(current_user: User = Depends(get_current_user)):
+    return current_user
