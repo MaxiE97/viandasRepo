@@ -11,7 +11,6 @@ from typing import List
 router = APIRouter()
 
 
-
 @router.post("/", response_model=SaleWithLines)
 def create_sale(
     sales: SaleWithLines,
@@ -20,9 +19,12 @@ def create_sale(
 ):
     lines = sales.lineas
 
-    # Crear la venta
+    # Calcular la cantidad total sumando la cantidad de cada línea
+    total_quantity = sum(line.cantidad for line in lines)
+
+    # Crear la venta usando la cantidad total calculada
     new_sale = Sale(
-        quantity_product=len(lines),  # Cantidad total de productos en la venta
+        quantity_product=total_quantity,  # Se asigna la suma total
         observation=sales.observation,
         date=date.today(),
         order_confirmed=False,
@@ -31,23 +33,24 @@ def create_sale(
     )
 
     db.add(new_sale)
-    db.flush()  # Obtiene el ID antes de agregar las líneas de venta
+    db.flush()  # Se obtiene el ID de la venta antes de agregar las líneas
 
     new_lines = []
-    for line in lines:
+    # Usar enumerate para asignar automáticamente el número de línea
+    for index, line in enumerate(lines):
         product = db.query(Product).filter(Product.id == line.product_id).first()
         if not product:
             raise HTTPException(status_code=404, detail=f"Product with id {line.product_id} not found")
 
         new_line = LineOfSale(
             cantidad=line.cantidad,
-            numeroDeLinea=line.numeroDeLinea,
+            numeroDeLinea=index + 1,  # Se asigna automáticamente el número de línea
             precio=product.precioActual,
             sale_id=new_sale.id,
             product_id=line.product_id,
         )
         db.add(new_line)
-        new_lines.append(new_line)  # Guardamos en una lista para devolverlo después
+        new_lines.append(new_line)  # Se agregan las líneas para devolver en la respuesta
 
     db.commit()
     db.refresh(new_sale)
@@ -56,4 +59,3 @@ def create_sale(
     new_sale.line_of_sales = new_lines
 
     return new_sale
-

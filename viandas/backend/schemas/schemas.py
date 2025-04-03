@@ -77,7 +77,7 @@ class Product(ProductBase):
 # --------------------
 class LineOfSaleBase(BaseModel):
     cantidad: int
-    numeroDeLinea: int
+  #  numeroDeLinea: int
 
 class LineOfSaleCreate(LineOfSaleBase):
     product_id: int
