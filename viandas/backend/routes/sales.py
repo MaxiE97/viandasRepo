@@ -11,7 +11,7 @@ from typing import List
 router = APIRouter()
 
 
-@router.post("/", response_model=SaleWithLines)
+@router.post("/online", response_model=SaleWithLines)
 def create_sale(
     sales: SaleWithLines,
     current_user: User = Depends(get_current_user),
