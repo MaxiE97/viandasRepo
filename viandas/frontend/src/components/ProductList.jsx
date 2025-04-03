@@ -40,12 +40,13 @@ const ProductList = () => {
               <p><strong>Precio:</strong> ${product.precioActual}</p>
               <p><strong>Stock:</strong> {product.stock} unidades</p>
               {product.detalle && <p><strong>Detalle:</strong> {product.detalle}</p>}
+              {/* Si en el futuro se requiere funcionalidad de edición y eliminación, se podría reactivar este bloque
               {isAdmin() && (
                 <div className="admin-controls">
                   <button onClick={() => handleEdit(product)}>Editar</button>
                   <button onClick={() => handleDelete(product.id)}>Eliminar</button>
                 </div>
-              )}
+              )} */}
             </li>
           ))}
         </ul>

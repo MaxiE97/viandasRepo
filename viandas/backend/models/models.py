@@ -1,3 +1,4 @@
+#models/models.py
 from sqlalchemy import Column, Integer, String, Boolean, Date, ForeignKey, Float
 from sqlalchemy.orm import relationship
 from config import Base
@@ -9,6 +10,7 @@ class User(Base):
     name = Column(String, index=True)
     apellido = Column(String, index=True)  # Nuevo campo
     email = Column(String, unique=True, index=True)
+    celular = Column(String, index=True)
     hashed_password = Column(String)
     is_active = Column(Boolean, default=True)
     role = Column(String, default="user")

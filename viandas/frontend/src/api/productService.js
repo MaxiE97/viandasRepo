@@ -1,22 +1,12 @@
 // src/api/productService.js
-import API from './axios';
+import API from "./axios";
 
 // Servicio para operaciones relacionadas con productos
 const ProductService = {
   // Obtener todos los productos
   getProducts: async () => {
     try {
-      const response = await API.get('/products/');
-      return response.data;
-    } catch (error) {
-      throw error;
-    }
-  },
-
-  // Obtener un producto por ID
-  getProductById: async (id) => {
-    try {
-      const response = await API.get(`/products/${id}`);
+      const response = await API.get("/products/");
       return response.data;
     } catch (error) {
       throw error;
@@ -26,7 +16,21 @@ const ProductService = {
   // Crear un nuevo producto (requiere permisos de admin)
   createProduct: async (productData) => {
     try {
-      const response = await API.post('/products/', productData);
+      const response = await API.post("/products/", productData);
+      return response.data;
+    } catch (error) {
+      throw error;
+    }
+  },
+
+
+//----------------------------------------------------------------------------------------------
+
+
+  // Obtener un producto por ID
+  getProductById: async (id) => {
+    try {
+      const response = await API.get(`/products/${id}`);
       return response.data;
     } catch (error) {
       throw error;
@@ -51,7 +55,7 @@ const ProductService = {
     } catch (error) {
       throw error;
     }
-  }
+  },
 };
 
 export default ProductService;

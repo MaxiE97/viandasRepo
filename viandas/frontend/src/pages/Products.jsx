@@ -9,6 +9,9 @@ const Products = () => {
   const [selectedProduct, setSelectedProduct] = useState(null);
   const { isAdmin } = useAuth();
 
+  // Consola para verificar si el usuario es admin
+  //console.log("¿Es admin?:", isAdmin());
+
   const handleNewProduct = () => {
     setSelectedProduct(null);
     setShowForm(true);

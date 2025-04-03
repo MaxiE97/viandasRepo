@@ -1,14 +1,20 @@
+#shemas.py
+
 from pydantic import BaseModel, EmailStr, Field
 from datetime import date
 from typing import Optional, List
 
 # --------------------
 # User Schemas
+
 # --------------------
 class UserBase(BaseModel):
     email: EmailStr
     name: str
     apellido: str  # Nuevo campo
+    celular: str
+
+
 
 class UserCreate(UserBase):
     password: str
@@ -16,6 +22,7 @@ class UserCreate(UserBase):
 class User(UserBase):
     id: int
     is_active: bool
+    role: str  # <-- Agregamos el rol aquí
 
     class Config:
         orm_mode = True
