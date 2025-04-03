@@ -94,7 +94,7 @@ const OrderForm = ({ onClose, onOrderPlaced }) => {
       // Crear estructura para enviar al API
       const saleData = {
         observation: allObservations.trim(),
-        lineas: selectedItems.map(product => ({
+        line_of_sales: selectedItems.map(product => ({
           cantidad: product.quantity,
           product_id: product.id
         }))
@@ -108,6 +108,7 @@ const OrderForm = ({ onClose, onOrderPlaced }) => {
       if (onClose) onClose();
     } catch (err) {
       setSubmitting(false);
+      console.error("Error detallado:", err.response?.data); // Añade esto
       setError(err.message || 'Error al realizar el pedido');
     }
   };
