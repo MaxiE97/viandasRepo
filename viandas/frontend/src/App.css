@@ -189,3 +189,23 @@
   .products-page .admin-controls {
     margin-bottom: 20px;
   }
+
+
+  /* Estilo para mensajes de éxito */
+.success-message {
+  background-color: #d4edda;
+  color: #155724;
+  padding: 10px;
+  border-radius: 4px;
+  margin-bottom: 15px;
+}
+
+/* Estilos para enlaces dentro de formularios */
+.register-link a, .register-login-link a {
+  color: #007bff;
+  text-decoration: none;
+}
+
+.register-link a:hover, .register-login-link a:hover {
+  text-decoration: underline;
+}

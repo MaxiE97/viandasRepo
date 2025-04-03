@@ -3,6 +3,7 @@ import React from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import Login from './pages/Login';
+import Register from './pages/Register';  // Importamos la nueva página de registro
 import Products from './pages/Products';
 import Navbar from './components/Navbar';
 import './App.css';
@@ -44,6 +45,7 @@ function AppContent() {
       <div className="container">
         <Routes>
           <Route path="/login" element={<Login />} />
+          <Route path="/register" element={<Register />} /> {/* Nueva ruta para registro */}
           <Route path="/products" element={
             <ProtectedRoute>
               <Products />

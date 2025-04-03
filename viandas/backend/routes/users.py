@@ -16,7 +16,7 @@ def create_user(user: UserCreate, db: Session = Depends(get_db)):
     if db_user:
         raise HTTPException(status_code=400, detail="Email already registered")
     hashed_password = get_password_hash(user.password)
-    db_user = User(email=user.email, name=user.name, apellido = user.apellido, hashed_password=hashed_password)
+    db_user = User(email=user.email, name=user.name, apellido = user.apellido, celular = user.celular, hashed_password=hashed_password)
     db.add(db_user)
     db.commit()
     db.refresh(db_user)

@@ -1,14 +1,23 @@
 // src/pages/Login.jsx
-import React, { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import React, { useState, useEffect } from 'react';
+import { useNavigate, Link, useLocation } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 
 const Login = () => {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
+  const [successMsg, setSuccessMsg] = useState('');
   const { login } = useAuth();
   const navigate = useNavigate();
+  const location = useLocation();
+
+  // Verificar si viene un mensaje de éxito de la página de registro
+  useEffect(() => {
+    if (location.state && location.state.message) {
+      setSuccessMsg(location.state.message);
+    }
+  }, [location]);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -27,6 +36,7 @@ const Login = () => {
   return (
     <div className="login-container">
       <h2>Iniciar Sesión</h2>
+      {successMsg && <p className="success-message" style={{ color: 'green' }}>{successMsg}</p>}
       {error && <p className="error">{error}</p>}
       <form onSubmit={handleSubmit}>
         <div className="form-group">
@@ -51,6 +61,10 @@ const Login = () => {
         </div>
         <button type="submit">Iniciar Sesión</button>
       </form>
+      
+      <div className="register-link" style={{ marginTop: '20px', textAlign: 'center' }}>
+        ¿No tienes una cuenta? <Link to="/register">Regístrate aquí</Link>
+      </div>
     </div>
   );
 };
