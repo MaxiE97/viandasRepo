@@ -48,15 +48,18 @@ const Products = () => {
           </div>
         )}
         
-        <div className="user-controls">
-          <button 
-            onClick={() => setShowOrderModal(true)}
-            className="order-button"
-          >
-            Realizar Pedido
-          </button>
+        {/* Mostrar solo si NO es admin */}
+        {!isAdmin() && ( 
+          <div className="user-controls">
+            <button 
+              onClick={() => setShowOrderModal(true)}
+              className="order-button"
+            >
+              Realizar Pedido
+            </button>
+          </div>
+        )}
         </div>
-      </div>
 
       {orderSuccess && (
         <div className="success-message">

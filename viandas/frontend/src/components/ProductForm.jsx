@@ -2,7 +2,7 @@
 import React, { useState, useEffect } from 'react';
 import ProductService from '../api/productService';
 
-const ProductForm = ({ product = null, onSave }) => {
+const ProductForm = ({ product = null, onSave, onCancel  }) => {
   const [formData, setFormData] = useState({
     nombre: '',
     precioActual: '',
@@ -161,11 +161,22 @@ const ProductForm = ({ product = null, onSave }) => {
             onChange={handleChange}
           />
           <label htmlFor="mostrarEnSistema">Mostrar en sistema</label>
+        </div>  
+        
+        <div className="buttons-container" style={{ marginTop: '15px', display: 'flex', gap: '10px' }}> 
+          <button type="submit" disabled={loading}>
+            {loading ? 'Guardando...' : 'Guardar Producto'}
+          </button>
+         
+          <button 
+            type="button" // Importante: tipo 'button' para no enviar el form
+            onClick={onCancel} // Llama a la función pasada por props
+            className="cancel-button" // Clase opcional para estilos
+            disabled={loading} // Deshabilitar si está cargando
+          >
+            Cancelar
+          </button>
         </div>
-
-        <button type="submit" disabled={loading}>
-          {loading ? 'Guardando...' : 'Guardar Producto'}
-        </button>
       </form>
     </div>
   );

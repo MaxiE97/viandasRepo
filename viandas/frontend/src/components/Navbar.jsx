@@ -23,6 +23,13 @@ const Navbar = () => {
         <li className="nav-item">
           <Link to="/products">Productos</Link>
         </li>
+
+        {!isAdmin() && (
+          <li className="nav-item">
+            <Link to="/profile">Mi Perfil</Link> 
+          </li>
+        )}
+
         {isAdmin() && (
           <li className="nav-item admin">
             <Link to="/admin">Admin</Link>

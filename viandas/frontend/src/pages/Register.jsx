@@ -1,7 +1,8 @@
 // src/pages/Register.jsx
 import React, { useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
-import UserService from '../api/userService';
+import { register } from '../api/userService'; 
+
 
 const Register = () => {
   const [formData, setFormData] = useState({
@@ -35,7 +36,7 @@ const Register = () => {
       }
 
       // Intentar registrar al usuario
-      await UserService.register(formData);
+      await register(formData);
       setLoading(false);
       
       // Redirigir a la página de login con mensaje de éxito

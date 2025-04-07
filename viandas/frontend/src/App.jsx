@@ -6,6 +6,8 @@ import Login from './pages/Login';
 import Register from './pages/Register';  // Importamos la nueva página de registro
 import Products from './pages/Products';
 import Navbar from './components/Navbar';
+import Admin from './pages/Admin'; 
+import ClientProfile from './pages/ClientProfile';
 import './App.css';
 
 // Componente de ruta protegida
@@ -51,6 +53,19 @@ function AppContent() {
               <Products />
             </ProtectedRoute>
           } />
+
+          <Route path="/admin" element={
+            <AdminRoute> 
+              <Admin /> 
+            </AdminRoute>
+          } />
+
+          <Route path="/profile" element={
+            <ProtectedRoute> 
+              <ClientProfile /> 
+            </ProtectedRoute>
+          } />
+
           <Route path="/" element={<Navigate to="/products" />} />
         </Routes>
       </div>
