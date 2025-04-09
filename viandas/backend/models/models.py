@@ -28,6 +28,7 @@ class Sale(Base):
     order_confirmed = Column(Boolean)
     sale_in_register = Column(Boolean)
     medioPago = Column(String, nullable=True)  # Ahora puede ser null
+    pagado = Column(Boolean, default=False)
 
     user_id = Column(Integer, ForeignKey("users.id"))
 

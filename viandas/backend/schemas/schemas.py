@@ -47,6 +47,7 @@ class SaleCreate(BaseModel):
     order_confirmed: bool
     sale_in_register: bool
     medioPago: Optional[str] = None  # Nuevo campo
+    pagado: Optional[bool] = False
 
     class Config:
         orm_mode = True
@@ -101,3 +102,30 @@ class SaleWithLines(BaseModel):
     class Config:
         from_attributes = True  # Para Pydantic v2
         allow_population_by_field_name = True
+
+
+class LineOfSaleFull(BaseModel):
+    id: int
+    cantidad: int
+    numeroDeLinea: int
+    precio: float
+    product: Product  # Relación al producto
+
+    class Config:
+        orm_mode = True
+
+
+class SaleAdminView(BaseModel):
+    id: int
+    quantity_product: int
+    observation: Optional[str]
+    date: date
+    order_confirmed: bool
+    sale_in_register: bool
+    medioPago: Optional[str]
+    pagado: bool
+    user: User  # Relación con el usuario
+    line_of_sales: List[LineOfSaleFull]  # Lista de líneas con productos
+
+    class Config:
+        orm_mode = True
