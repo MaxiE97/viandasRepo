@@ -1,6 +1,6 @@
 # routes/sales.py
 from fastapi import APIRouter, Depends, HTTPException, Body, status 
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session,joinedload 
 from models.models import Sale, User, LineOfSale, Product
 from schemas.schemas import SaleCreate, SaleWithLines, LineOfSaleCreate, SaleAdminView
 from api.deps import get_db, get_current_user
@@ -184,8 +184,15 @@ def crear_venta_en_caja(
     venta: SaleWithLines = Body(...),
     db: Session = Depends(get_db),
 ):
-    # Usuario fijo para ventas en caja
-    usuario_caja_id = 5
+    # Usuario fijo para ventas en caja (Asegúrate que el ID 5 exista y sea el correcto)
+    usuario_caja_id = 5 
+    db_user_caja = db.query(User).filter(User.id == usuario_caja_id).first()
+    if not db_user_caja:
+         raise HTTPException(
+             status_code=status.HTTP_404_NOT_FOUND, 
+             detail=f"Usuario de caja con ID {usuario_caja_id} no encontrado."
+         )
+
 
     # Calcular cantidad total
     total_quantity = sum(line.cantidad for line in venta.lineas)
@@ -194,37 +201,83 @@ def crear_venta_en_caja(
         quantity_product=total_quantity,
         observation=venta.observation,
         date=date.today(),
-        order_confirmed=True,
-        sale_in_register=True,
-        pagado=True,  # En caja se asume pagado
-        medioPago="Caja",  # Valor por defecto, si querés puede ser custom
+        order_confirmed=True,      # Confirmada por defecto en caja
+        sale_in_register=True,     # Registrada por defecto en caja
+        pagado=True,               # Pagado por defecto en caja
+        medioPago="Caja",          # Medio de pago por defecto
         user_id=usuario_caja_id
     )
 
     db.add(nueva_venta)
-    db.flush()
+    # Es importante hacer flush aquí para obtener el ID de nueva_venta 
+    # antes de crear las líneas, pero el commit final irá después de descontar stock.
+    db.flush() 
 
     nuevas_lineas = []
-    for index, linea in enumerate(venta.lineas):
-        producto = db.query(Product).filter(Product.id == linea.product_id).first()
-        if not producto:
-            raise HTTPException(status_code=404, detail=f"Producto con id {linea.product_id} no encontrado")
+    productos_modificados = [] # Para refrescar después del commit si es necesario
 
-        linea_venta = LineOfSale(
-            cantidad=linea.cantidad,
-            numeroDeLinea=index + 1,
-            precio=producto.precioActual,
-            sale_id=nueva_venta.id,
-            product_id=linea.product_id,
+    # --- INICIO LÓGICA DE STOCK ---
+    try:
+        for index, linea in enumerate(venta.lineas):
+            # Usar with_for_update() para bloquear la fila del producto y evitar race conditions
+            producto = db.query(Product).filter(Product.id == linea.product_id).with_for_update().first()
+            
+            if not producto:
+                # Si no se encuentra el producto, revertimos todo y lanzamos error
+                db.rollback() 
+                raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Producto con id {linea.product_id} no encontrado")
+
+            # Verificar stock ANTES de crear la línea
+            if producto.stock < linea.cantidad:
+                db.rollback() # Revertir la transacción
+                raise HTTPException(
+                    status_code=status.HTTP_409_CONFLICT,
+                    detail=f"Stock insuficiente para '{producto.nombre}'. Stock actual: {producto.stock}, Solicitado: {linea.cantidad}"
+                )
+            
+            # Descontar stock
+            producto.stock -= linea.cantidad
+            productos_modificados.append(producto) # Guardar referencia si necesitas refrescar
+
+            # Crear la línea de venta
+            linea_venta = LineOfSale(
+                cantidad=linea.cantidad,
+                numeroDeLinea=index + 1,
+                precio=producto.precioActual, # Usar el precio actual del producto
+                sale_id=nueva_venta.id,
+                product_id=linea.product_id,
+            )
+            db.add(linea_venta)
+            nuevas_lineas.append(linea_venta)
+
+        # Si todo salió bien, confirmar todos los cambios (venta, líneas, stock)
+        db.commit()
+
+    except HTTPException as http_exc:
+         # Si hubo un HTTPException (ej. stock insuficiente), ya hicimos rollback
+         # Simplemente relanzamos la excepción
+         raise http_exc
+    except Exception as e:
+        # Si hubo cualquier otro error durante el proceso
+        db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Error inesperado procesando la venta: {e}"
         )
-        db.add(linea_venta)
-        nuevas_lineas.append(linea_venta)
+    # --- FIN LÓGICA DE STOCK ---
 
-    db.commit()
+    # Refrescar la venta para asegurar que la respuesta incluya todo desde la BD
     db.refresh(nueva_venta)
-    nueva_venta.line_of_sales = nuevas_lineas
+    # Asignar las líneas creadas para la respuesta (SQLAlchemy puede no cargarlas automáticamente después del commit)
+    # Aunque SaleAdminView debería poder cargarlas si las relaciones están bien, 
+    # asignarlas explícitamente puede ser más seguro dependiendo de la config.
+    # Si usas orm_mode = True y las relaciones están bien, esto podría ser redundante, pero no daña.
+    nueva_venta.line_of_sales = nuevas_lineas 
 
     return nueva_venta
+
+
+
 
 @router.put("/{sale_id}/register", response_model=SaleAdminView)
 def register_sale_in_caja_admin(
@@ -233,46 +286,71 @@ def register_sale_in_caja_admin(
     current_user: User = Depends(get_current_user)
 ):
     """
-    Marca una venta existente como registrada en caja (sale_in_register = True).
+    Marca una venta existente como registrada en caja (sale_in_register = True)
+    y descuenta el stock de los productos correspondientes.
     Solo accesible para administradores.
     """
-    # 1. Verificar permisos de administrador
     if current_user.role != "admin":
         raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN, 
+            status_code=status.HTTP_403_FORBIDDEN,
             detail="No autorizado para registrar ventas en caja"
         )
 
-    # 2. Buscar la venta por ID
-    sale = db.query(Sale).filter(Sale.id == sale_id).first()
+    # Cargar la venta y sus líneas de venta y productos asociados eficientemente
+    sale = db.query(Sale).options(
+        joinedload(Sale.line_of_sales).joinedload(LineOfSale.product) 
+    ).filter(Sale.id == sale_id).first()
+
     if not sale:
         raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, 
+            status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Venta con id {sale_id} no encontrada"
         )
 
-    # 3. Opcional: Verificar si ya está registrada para evitar trabajo innecesario
-    # if sale.sale_in_register:
-    #     raise HTTPException(
-    #         status_code=status.HTTP_400_BAD_REQUEST,
-    #         detail=f"La venta {sale_id} ya está registrada en caja."
-    #     )
-        
-    # 4. Opcional: Verificar si está confirmada antes de registrarla
-    # if not sale.order_confirmed:
-    #      raise HTTPException(
-    #          status_code=status.HTTP_400_BAD_REQUEST,
-    #          detail=f"La venta {sale_id} debe estar confirmada antes de registrarse en caja."
-    #      )
+    # Evitar doble descuento si ya está registrada
+    if sale.sale_in_register:
+        # Podrías devolver la venta tal cual o un mensaje específico
+         # raise HTTPException(
+         #     status_code=status.HTTP_400_BAD_REQUEST,
+         #     detail=f"La venta {sale_id} ya está registrada en caja."
+         # )
+         # O simplemente retornarla sin hacer cambios
+         return sale
 
-    # 5. Actualizar el estado
+
+    # --- LÓGICA DE DESCUENTO DE STOCK ---
+    for line in sale.line_of_sales:
+        if not line.product: 
+             # Esto no debería pasar si la carga fue correcta, pero por seguridad
+             raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, 
+                detail=f"No se pudo cargar el producto para la línea {line.id}"
+             )
+
+        if line.product.stock < line.cantidad:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT, # 409 Conflict es una buena opción
+                detail=f"Stock insuficiente para '{line.product.nombre}'. Stock actual: {line.product.stock}, Pedido: {line.cantidad}"
+            )
+
+        line.product.stock -= line.cantidad
+    # --- FIN LÓGICA DE DESCUENTO DE STOCK ---
+
+    # Marcar como registrada
     sale.sale_in_register = True
-    
-    # 6. Guardar los cambios en la base de datos
-    db.commit()
-    
-    # 7. Refrescar el objeto para obtener el estado actualizado desde la BD
-    db.refresh(sale)
 
-    # 8. Devolver la venta actualizada
+    try:
+        db.commit()
+        db.refresh(sale) # Refrescar sale
+        # Refrescar productos individualmente si es necesario ver el stock actualizado inmediatamente en la respuesta
+        # (Aunque la respuesta es SaleAdminView, refrescar sale ya podría ser suficiente)
+        # for line in sale.line_of_sales:
+        #     db.refresh(line.product) 
+    except Exception as e:
+         db.rollback() # Importante revertir si hay un error durante el commit
+         raise HTTPException(
+             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+             detail=f"Error al guardar cambios en la base de datos: {e}"
+         )
+
     return sale
