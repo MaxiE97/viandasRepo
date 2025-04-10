@@ -1,7 +1,7 @@
 // src/components/OrderForm.jsx
 import React, { useState, useEffect } from 'react';
 import ProductService from '../api/productService';
-import SaleService from '../api/saleService';
+import { createOnlineSale } from '../api/saleService';
 
 const OrderForm = ({ onClose, onOrderPlaced }) => {
   const [products, setProducts] = useState([]);
@@ -101,7 +101,7 @@ const OrderForm = ({ onClose, onOrderPlaced }) => {
       };
 
       // Enviar al API
-      await SaleService.createOnlineSale(saleData);
+      await createOnlineSale(saleData);
       
       setSubmitting(false);
       if (onOrderPlaced) onOrderPlaced();

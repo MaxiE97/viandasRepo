@@ -8,6 +8,7 @@ import Products from './pages/Products';
 import Navbar from './components/Navbar';
 import Admin from './pages/Admin'; 
 import ClientProfile from './pages/ClientProfile';
+import AdminSales from './pages/AdminSales'; 
 import './App.css';
 
 // Componente de ruta protegida
@@ -64,6 +65,12 @@ function AppContent() {
             <ProtectedRoute> 
               <ClientProfile /> 
             </ProtectedRoute>
+          } />
+
+          <Route path="/admin/sales" element={
+            <AdminRoute> {/* Protegida para admins */}
+              <AdminSales /> 
+            </AdminRoute>
           } />
 
           <Route path="/" element={<Navigate to="/products" />} />
