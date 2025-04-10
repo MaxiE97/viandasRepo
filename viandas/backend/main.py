@@ -1,18 +1,34 @@
-#main.py
+# main.py
 from fastapi import FastAPI
-from config import engine
-from models.models import User, Sale
-from routes import auth, users, sales, products, admin, lines
+from fastapi.staticfiles import StaticFiles # ¡Importar!
 from fastapi.middleware.cors import CORSMiddleware
-# Crear las tablas en la base de datos
-User.metadata.create_all(bind=engine)
-Sale.metadata.create_all(bind=engine)
+from config import engine
+from models.models import Base # Importar Base en lugar de modelos específicos si usas metadata
+from routes import auth, users, sales, products, admin, lines
+import os # ¡Importar os!
+from pathlib import Path # ¡Importar Path!
+
+# Crear las tablas si no existen (usando Base.metadata)
+Base.metadata.create_all(bind=engine)
 
 app = FastAPI(
     title="Tu API",
     description="API description",
     openapi_tags=[{"name": "auth", "description": "Authentication"}],
 )
+
+# --- CONFIGURACIÓN ARCHIVOS ESTÁTICOS ---
+# Define el directorio donde se guardarán las imágenes
+STATIC_DIR = Path("static")
+PRODUCT_IMAGE_DIR = STATIC_DIR / "product_images"
+
+# Crear directorios si no existen
+PRODUCT_IMAGE_DIR.mkdir(parents=True, exist_ok=True)
+
+# Montar el directorio estático para que sea accesible desde la URL /static
+# IMPORTANTE: Montar ANTES de incluir los routers si estos dependen de este path
+app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
+# -----------------------------------------
 
 
 app.add_middleware(
