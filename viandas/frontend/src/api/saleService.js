@@ -146,3 +146,20 @@ export const createCajaSale = async (saleData) => {
 };
 
 // No se necesita export default al usar exportaciones nombradas
+
+
+/**
+ * Obtiene los pedidos del usuario actual listos para retirar.
+ * @returns {Promise<Array>} - Lista de ventas listas para retirar.
+ */
+export const getMyReadyOrders = async () => {
+  try {
+    // Llama al nuevo endpoint del backend
+    const response = await API.get(`${SALE_API_URL}/my-orders/ready-for-pickup`);
+    return response.data;
+  } catch (error) {
+    console.error("Error fetching ready orders:", error.response?.data || error.message);
+    // Lanza el error para que el componente lo maneje
+    throw error.response?.data || new Error("Error al obtener los pedidos listos para retirar");
+  }
+};

@@ -1,62 +1,67 @@
 // src/pages/ClientProfile.jsx
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
-import { updateUserEmail, updateUserCellphone } from '../api/userService'; // Importa las nuevas funciones
+import { updateUserCellphone } from '../api/userService';
+import { getMyReadyOrders } from '../api/saleService';
 
 const ClientProfile = () => {
-  const { user, refreshAuthToken } = useAuth(); // Obtén el usuario y la función para refrescar datos si es necesario
-
-  // Estados para los formularios y mensajes
-  const [newEmail, setNewEmail] = useState('');
+  const { user } = useAuth();
   const [newCellphone, setNewCellphone] = useState('');
-  const [loadingEmail, setLoadingEmail] = useState(false);
   const [loadingCellphone, setLoadingCellphone] = useState(false);
-  const [errorEmail, setErrorEmail] = useState('');
   const [errorCellphone, setErrorCellphone] = useState('');
-  const [successEmail, setSuccessEmail] = useState('');
   const [successCellphone, setSuccessCellphone] = useState('');
+  const [readyOrders, setReadyOrders] = useState([]);
+  const [loadingOrders, setLoadingOrders] = useState(true);
+  const [errorOrders, setErrorOrders] = useState('');
 
-  // Cargar datos iniciales del usuario en los inputs
-  useEffect(() => {
-    if (user) {
-      setNewEmail(user.email || '');
-      setNewCellphone(user.celular || '');
+  // Función para formatear fecha YYYY-MM-DD a DD/MM/YYYY local
+  const formatDate = (dateString) => {
+    if (!dateString) return 'N/A';
+    const parts = dateString.split('-');
+    if (parts.length !== 3) return dateString;
+    // Crea la fecha usando los componentes para evitar problemas de UTC
+    const localDate = new Date(parts[0], parts[1] - 1, parts[2]);
+    // Comprueba si la fecha es válida antes de formatear
+    if (isNaN(localDate.getTime())) {
+        return dateString; // Devuelve el string original si la fecha no es válida
     }
-  }, [user]); // Se ejecuta cuando el componente monta o 'user' cambia
-
-  // Manejador para actualizar el email
-  const handleEmailUpdate = async (e) => {
-    e.preventDefault();
-    if (!newEmail || newEmail === user.email) {
-      setErrorEmail('Ingresa un email diferente al actual.');
-      return;
-    }
-    setLoadingEmail(true);
-    setErrorEmail('');
-    setSuccessEmail('');
-    try {
-      await updateUserEmail(newEmail);
-      setSuccessEmail('¡Email actualizado con éxito!');
-      // Opcional: Refrescar el token/datos de usuario en el contexto si es necesario
-      if (refreshAuthToken) {
-         await refreshAuthToken(); // Llama a la función para obtener datos actualizados si existe
-      }
-      // Limpiar mensaje después de unos segundos
-       setTimeout(() => setSuccessEmail(''), 5000);
-    } catch (error) {
-      setErrorEmail(error.detail || error.message || 'Error al actualizar el email.');
-       setTimeout(() => setErrorEmail(''), 5000);
-    } finally {
-      setLoadingEmail(false);
-    }
+    return localDate.toLocaleDateString('es-AR', {
+        day: '2-digit',
+        month: '2-digit',
+        year: 'numeric'
+    }); // Formato DD/MM/YYYY para Argentina
   };
 
-  // Manejador para actualizar el celular
+  useEffect(() => {
+    if (user) {
+      setNewCellphone(user.celular || '');
+    }
+  }, [user]);
+
+  useEffect(() => {
+    const fetchReadyOrders = async () => {
+      setLoadingOrders(true);
+      setErrorOrders('');
+      try {
+        const orders = await getMyReadyOrders();
+        setReadyOrders(orders);
+      } catch (error) {
+        console.error("Error fetching ready orders on profile:", error);
+        setErrorOrders('No se pudieron cargar los pedidos listos.');
+        setReadyOrders([]);
+      } finally {
+        setLoadingOrders(false);
+      }
+    };
+    if (user) { fetchReadyOrders(); } else { setLoadingOrders(false); }
+  }, [user]);
+
   const handleCellphoneUpdate = async (e) => {
     e.preventDefault();
     if (!newCellphone || newCellphone === user.celular) {
        setErrorCellphone('Ingresa un celular diferente al actual.');
-      return;
+       setTimeout(() => setErrorCellphone(''), 5000);
+       return;
     }
     setLoadingCellphone(true);
     setErrorCellphone('');
@@ -64,12 +69,8 @@ const ClientProfile = () => {
     try {
       await updateUserCellphone(newCellphone);
       setSuccessCellphone('¡Celular actualizado con éxito!');
-       // Opcional: Refrescar el token/datos de usuario en el contexto si es necesario
-      if (refreshAuthToken) {
-         await refreshAuthToken(); // Llama a la función para obtener datos actualizados si existe
-      }
-      // Limpiar mensaje después de unos segundos
-       setTimeout(() => setSuccessCellphone(''), 5000);
+      // Considera refrescar los datos del usuario en el contexto si es necesario
+      setTimeout(() => setSuccessCellphone(''), 5000);
     } catch (error) {
       setErrorCellphone(error.detail || error.message || 'Error al actualizar el celular.');
       setTimeout(() => setErrorCellphone(''), 5000);
@@ -79,72 +80,75 @@ const ClientProfile = () => {
   };
 
   if (!user) {
-    return <div>Cargando perfil...</div>; // O un spinner de carga
+    return <div>Debes iniciar sesión para ver tu perfil.</div>;
   }
 
   return (
     <div className="client-profile-page">
       <h1>Mi Perfil</h1>
-      
-      {/* Sección para actualizar Email */}
+
+      <div className="profile-section ready-orders-section">
+        <h2>Pedidos Listos para Retirar</h2>
+        {loadingOrders ? ( <p>Verificando pedidos...</p> )
+         : errorOrders ? ( <p className="error">{errorOrders}</p> )
+         : readyOrders.length > 0 ? (
+            <div>
+              <p className="success-message" style={{ textAlign: 'center', fontWeight: 'bold' }}>
+                ¡Tienes {readyOrders.length} pedido(s) listo(s) para retirar!
+              </p>
+              <ul className="ready-orders-list">
+                {readyOrders.map(order => (
+                  <li key={order.id}>
+                    {/* --- CAMBIO: Usar formatDate --- */}
+                    <strong>Pedido del {formatDate(order.date)}:</strong>
+                    {/* ---------------------------- */}
+                    {order.line_of_sales && order.line_of_sales.length > 0 ? (
+                       <ul style={{ paddingLeft: '1rem', marginTop: '0.3rem', fontSize: '0.9em' }}>
+                        {order.line_of_sales.map(line => (
+                          <li key={line.id} style={{ border: 'none', padding: '0.1rem 0', marginBottom: 0, background: 'none'}}>
+                            {line.product?.nombre || 'Producto desconocido'} ({line.cantidad}x)
+                          </li>
+                        ))}
+                      </ul>
+                    ) : ( <span> (Sin detalles de productos)</span> )}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          ) : ( <p>No tienes pedidos listos para retirar en este momento.</p> )}
+      </div>
+
       <div className="profile-section">
-        <h2>Datos de Contacto</h2>
-        <form onSubmit={handleEmailUpdate} className="profile-form">
-          <div className="form-group">
-            <label htmlFor="email">Email Actual:</label>
-            <p>{user.email}</p> {/* Muestra el email actual */}
-          </div>
-          <div className="form-group">
-            <label htmlFor="newEmail">Nuevo Email:</label>
-            <input
-              type="email"
-              id="newEmail"
-              value={newEmail}
-              onChange={(e) => { setNewEmail(e.target.value); setErrorEmail(''); setSuccessEmail(''); }}
-              required
-              disabled={loadingEmail}
-            />
-          </div>
-          {errorEmail && <p className="error-message">{errorEmail}</p>}
-          {successEmail && <p className="success-message">{successEmail}</p>}
-          <button type="submit" disabled={loadingEmail || newEmail === user.email}>
-            {loadingEmail ? 'Actualizando...' : 'Actualizar Email'}
-          </button>
+        <h2>Actualizar Celular</h2>
+        <form onSubmit={handleCellphoneUpdate} className="profile-form">
+           <div className="form-group">
+              <label htmlFor="cellphone">Celular Actual:</label>
+              <p>{user.celular || 'No especificado'}</p>
+            </div>
+            <div className="form-group">
+              <label htmlFor="newCellphone">Nuevo Celular:</label>
+              <input
+                type="tel"
+                id="newCellphone"
+                value={newCellphone}
+                onChange={(e) => { setNewCellphone(e.target.value); setErrorCellphone(''); setSuccessCellphone(''); }}
+                placeholder="Ingresa tu nuevo número"
+                disabled={loadingCellphone}
+              />
+            </div>
+            {errorCellphone && <p className="error-message">{errorCellphone}</p>}
+            {successCellphone && <p className="success-message">{successCellphone}</p>}
+            <div className="buttons-container" style={{ borderTop: 'none', paddingTop: 0 }}>
+              <button type="submit" disabled={loadingCellphone || !newCellphone || newCellphone === user.celular}>
+                {loadingCellphone ? 'Actualizando...' : 'Actualizar Celular'}
+              </button>
+            </div>
         </form>
       </div>
 
-      {/* Sección para actualizar Celular */}
       <div className="profile-section">
-         <form onSubmit={handleCellphoneUpdate} className="profile-form">
-           <div className="form-group">
-             <label htmlFor="cellphone">Celular Actual:</label>
-             {/* Asume que el campo se llama 'celular' en tu objeto user */}
-             <p>{user.celular || 'No especificado'}</p> 
-           </div>
-           <div className="form-group">
-             <label htmlFor="newCellphone">Nuevo Celular:</label>
-             <input
-              type="tel" // Usar type="tel" para celulares
-              id="newCellphone"
-              value={newCellphone}
-              onChange={(e) => { setNewCellphone(e.target.value); setErrorCellphone(''); setSuccessCellphone(''); }}
-              required
-              disabled={loadingCellphone}
-             />
-           </div>
-           {errorCellphone && <p className="error-message">{errorCellphone}</p>}
-           {successCellphone && <p className="success-message">{successCellphone}</p>}
-           <button type="submit" disabled={loadingCellphone || newCellphone === user.celular}>
-             {loadingCellphone ? 'Actualizando...' : 'Actualizar Celular'}
-           </button>
-         </form>
-      </div>
-
-      {/* Sección Futura para Estado de Pedidos */}
-      <div className="profile-section">
-        <h2>Mis Pedidos</h2>
-        <p>Aquí podrás ver el estado de tus pedidos próximamente.</p>
-        {/* Aquí iría la lógica para mostrar pedidos cuando la implementes */}
+        <h2>Mis Pedidos Anteriores</h2>
+        <p>Aquí podrás ver el historial completo de tus pedidos próximamente.</p>
       </div>
 
     </div>

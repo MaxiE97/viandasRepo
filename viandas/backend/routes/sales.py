@@ -153,9 +153,14 @@ def get_ventas_finalizadas(
     if current_user.role != "admin":
         raise HTTPException(status_code=403, detail="No autorizado")
 
+    # --- CAMBIO AQUÍ ---
+    # Antes era: (Sale.order_confirmed == True) | (Sale.sale_in_register == True)
+    # Ahora es solo:
     sales = db.query(Sale).filter(
-        (Sale.order_confirmed == True) | (Sale.sale_in_register == True)
-    ).all()
+        Sale.sale_in_register == True # Solo mostrar las marcadas como registradas/retiradas
+    ).order_by(Sale.date.desc()).all() # Mantenemos el orden opcional
+    # --- FIN CAMBIO ---
+
     return sales
 
 
@@ -354,3 +359,28 @@ def register_sale_in_caja_admin(
          )
 
     return sale
+
+
+# GET - Pedidos del usuario actual listos para retirar
+@router.get("/my-orders/ready-for-pickup", response_model=List[SaleAdminView])
+def get_my_ready_orders(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """
+    Obtiene los pedidos del usuario autenticado que están confirmados
+    pero aún no han sido marcados como registrados/retirados.
+    """
+    # (Opcional: Podrías crear un Schema más simple como SaleReadyInfo si no quieres toda la info de SaleAdminView)
+    ready_sales = db.query(Sale).filter(
+        Sale.user_id == current_user.id,
+        Sale.order_confirmed == True,
+        Sale.sale_in_register == False
+    ).order_by(Sale.date.desc()).all() # Ordenar por fecha descendente opcionalmente
+
+    # Nota: Si usaras un schema más simple, asegúrate de que las relaciones necesarias
+    # (como user, line_of_sales.product) se carguen si las necesitas mostrar,
+    # o ajusta la query/schema para devolver solo los IDs/datos básicos.
+    # Con SaleAdminView, las relaciones ya deberían cargarse si están bien definidas en el schema.
+
+    return ready_sales
