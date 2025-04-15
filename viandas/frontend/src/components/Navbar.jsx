@@ -1,6 +1,7 @@
 // src/components/Navbar.jsx
 import React from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+// ¡Importa NavLink en lugar de Link!
+import { NavLink, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 
 const Navbar = () => {
@@ -14,25 +15,27 @@ const Navbar = () => {
 
   // No mostrar navbar si no hay usuario
   if (!user) {
-     return null; 
+     return null;
   }
 
   return (
     <nav className="navbar">
       <div className="navbar-brand">
-        {/* El enlace principal lleva a /admin si es admin, sino a /products */}
-        <Link to={isAdmin() ? "/admin" : "/products"}>Sistema de Viandas</Link>
+        {/* Usa NavLink aquí también si quieres que sea "activo" */}
+        <NavLink to={isAdmin() ? "/admin" : "/products"}>Sistema de Viandas</NavLink>
       </div>
-      
+
       <ul className="navbar-nav">
          {/* --- VISTA CLIENTE --- */}
         {!isAdmin() && (
           <>
             <li className="nav-item">
-              <Link to="/products">Productos</Link>
+              {/* Usa NavLink */}
+              <NavLink to="/products">Productos</NavLink>
             </li>
             <li className="nav-item">
-              <Link to="/profile">Mi Perfil</Link> 
+               {/* Usa NavLink */}
+              <NavLink to="/profile">Mi Perfil</NavLink>
             </li>
              {/* Puedes añadir aquí link a "Mis Pedidos" para clientes en el futuro */}
           </>
@@ -42,18 +45,20 @@ const Navbar = () => {
         {isAdmin() && (
           <>
             <li className="nav-item admin">
-              <Link to="/admin">Admin Productos</Link> {/* Ahora es la vista principal de productos para admin */}
+               {/* Usa NavLink */}
+              <NavLink to="/admin">Admin Productos</NavLink>
             </li>
             <li className="nav-item admin">
-              <Link to="/admin/sales">Admin Ventas</Link> 
+               {/* Usa NavLink */}
+              <NavLink to="/admin/sales">Admin Ventas</NavLink>
             </li>
              {/* Puedes añadir aquí links a "Usuarios", "Reportes", etc. para admin */}
           </>
         )}
       </ul>
-      
+
       <div className="navbar-user">
-        <span>Hola, {user.name || user.email}</span> 
+        <span>Hola, {user.name || user.email}</span>
         <button onClick={handleLogout}>Cerrar Sesión</button>
       </div>
     </nav>
