@@ -146,10 +146,6 @@ const ClientProfile = () => {
         </form>
       </div>
 
-      <div className="profile-section">
-        <h2>Mis Pedidos Anteriores</h2>
-        <p>Aquí podrás ver el historial completo de tus pedidos próximamente.</p>
-      </div>
 
     </div>
   );

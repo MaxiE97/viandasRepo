@@ -119,46 +119,113 @@ button.delete:hover, .button-danger:hover { background-color: var(--color-danger
 .action-button-small.paid-toggle:hover { background-color: var(--color-info-dark); border-color: var(--color-info-dark); }
 
 /* 9. Product List (Cliente View) - v3 */
-.product-list ul { list-style: none; padding: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: var(--spacing-large); margin-top: var(--spacing-large); }
-.product-item { background-color: var(--color-white); padding: 0; margin-bottom: 0; border-radius: var(--border-radius); box-shadow: var(--box-shadow-medium); overflow: hidden; display: flex; flex-direction: column; transition: var(--transition-base); border: 1px solid var(--color-border); }
-.product-item:hover { transform: translateY(-5px); box-shadow: var(--box-shadow-large); }
+.product-list ul {
+  list-style: none;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: var(--spacing-large);
+  margin-top: var(--spacing-large);
+}
+
+.product-item {
+  background-color: var(--color-white);
+  padding: 0;
+  margin-bottom: 0;
+  border-radius: var(--border-radius);
+  box-shadow: var(--box-shadow-medium);
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  transition: var(--transition-base);
+  border: 1px solid var(--color-border);
+}
+
+.product-item:hover {
+  transform: translateY(-5px);
+  box-shadow: var(--box-shadow-large);
+}
+
 .product-item .image-container {
   width: 100%;
-  /* --- CAMBIO: Altura reducida --- */
-  height: 240px; /* Reducida desde 260px */
+  /* --- CAMBIO: Altura ajustada ligeramente --- */
+  height: 230px; /* Un poco menos que 240px */
   background-color: #f0f0f0;
   display: flex;
   align-items: center;
   justify-content: center;
   overflow: hidden;
   position: relative;
-  /* --- CAMBIO: Cursor normal, ya no hay zoom --- */
-  cursor: default;
+  cursor: default; /* Cursor normal */
 }
-.product-item img { width: 100%; height: 100%; object-fit: cover; transition: transform 0.3s ease; }
+
+.product-item img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  transition: transform 0.3s ease;
+}
+
 .product-item .product-info {
-    padding: var(--spacing-medium) var(--spacing-large);
-    flex-grow: 1;
-    display: flex;
-    flex-direction: column;
-    /* --- CAMBIO: Eliminada altura mínima --- */
-    /* min-height: 130px; */ /* Dejamos que la altura se ajuste al contenido */
+  padding: var(--spacing-medium) var(--spacing-large);
+  flex-grow: 1;
+  /* --- CAMBIO: Asegurar layout de columna flex --- */
+  display: flex;
+  flex-direction: column;
+  /* Eliminamos min-height general de aquí */
 }
-.product-item h3 { margin-bottom: var(--spacing-small); color: var(--color-dark); font-size: 1.25rem; font-weight: 700; line-height: 1.3; }
-.product-item p {
-  /* --- CAMBIO: Eliminados estilos de limitación de altura --- */
-  /* max-height, overflow, text-overflow eliminados */
+
+.product-item h3 {
+  margin-bottom: var(--spacing-small);
+  color: var(--color-dark);
+  font-size: 1.25rem;
+  font-weight: 700;
+  line-height: 1.3;
+}
+
+/* Párrafo de descripción */
+.product-item p:not(.price) { /* Selecciona párrafos que NO sean el precio */
   margin-bottom: var(--spacing-medium);
   font-size: 0.9rem;
   color: var(--color-text-light);
-  flex-grow: 1;
+  flex-grow: 1; /* Sigue empujando el precio hacia abajo */
   line-height: 1.5;
+  /* --- CAMBIO: Altura mínima para ~5 líneas --- */
+  min-height: calc(0.9rem * 1.5 * 5); /* font-size * line-height * num-líneas */
+  /* Puedes ajustar el '5' si quieres más/menos líneas visibles */
 }
-.product-item p.price { font-size: 1.3rem; font-weight: 700; color: var(--color-primary-dark); margin-top: auto; padding-top: var(--spacing-small); text-align: right; border-top: 1px dashed var(--color-border); margin-bottom: 0; }
-.product-item p strong { color: var(--color-text); font-weight: 600; margin-right: 0.3rem; }
-.product-item .image-placeholder { color: var(--color-text-light); font-size: 0.9rem; text-align: center; }
-.products-page .product-actions { display: flex; justify-content: space-between; align-items: center; margin-bottom: var(--spacing-large); padding-bottom: var(--spacing-medium); border-bottom: 1px solid var(--color-border); }
 
+.product-item p.price {
+   font-size: 1.3rem;
+   font-weight: 700;
+   color: var(--color-primary-dark);
+   margin-top: auto; /* Clave para alinear al fondo */
+   padding-top: var(--spacing-small);
+   text-align: right;
+   border-top: 1px dashed var(--color-border);
+   margin-bottom: 0;
+}
+
+.product-item p strong {
+  color: var(--color-text);
+  font-weight: 600;
+  margin-right: 0.3rem;
+}
+
+.product-item .image-placeholder {
+  color: var(--color-text-light);
+  font-size: 0.9rem;
+  text-align: center;
+}
+
+.products-page .product-actions {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: var(--spacing-large);
+  padding-bottom: var(--spacing-medium);
+  border-bottom: 1px solid var(--color-border);
+}
 /* 10. Tablas */
 .product-table, .admin-table { width: 100%; border-collapse: collapse; margin-bottom: var(--spacing-large); font-size: 0.95rem; background-color: var(--color-white); box-shadow: var(--box-shadow-light); border: 1px solid var(--color-border); border-radius: var(--border-radius); overflow: hidden; }
 .product-table th, .admin-table th { background-color: var(--color-secondary-light); font-weight: 700; color: var(--color-dark); text-align: left; padding: 0.8rem 1rem; border-bottom: 2px solid var(--color-border); white-space: nowrap; }

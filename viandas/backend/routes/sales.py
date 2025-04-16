@@ -153,9 +153,7 @@ def get_ventas_finalizadas(
     if current_user.role != "admin":
         raise HTTPException(status_code=403, detail="No autorizado")
 
-    # --- CAMBIO AQUÍ ---
-    # Antes era: (Sale.order_confirmed == True) | (Sale.sale_in_register == True)
-    # Ahora es solo:
+
     sales = db.query(Sale).filter(
         Sale.sale_in_register == True # Solo mostrar las marcadas como registradas/retiradas
     ).order_by(Sale.date.desc()).all() # Mantenemos el orden opcional
@@ -186,100 +184,87 @@ def set_pagado(
 
 @router.post("/ventas/caja", response_model=SaleAdminView)
 def crear_venta_en_caja(
-    venta: SaleWithLines = Body(...),
+    venta: SaleWithLines = Body(...), # venta ahora incluye medioPago opcional
     db: Session = Depends(get_db),
 ):
-    # Usuario fijo para ventas en caja (Asegúrate que el ID 5 exista y sea el correcto)
-    usuario_caja_id = 5 
+    usuario_caja_id = 5
     db_user_caja = db.query(User).filter(User.id == usuario_caja_id).first()
     if not db_user_caja:
          raise HTTPException(
-             status_code=status.HTTP_404_NOT_FOUND, 
+             status_code=status.HTTP_404_NOT_FOUND,
              detail=f"Usuario de caja con ID {usuario_caja_id} no encontrado."
          )
 
+    # Validar que se recibió un medio de pago válido desde el frontend
+    if not venta.medioPago or venta.medioPago not in ["Efectivo", "Transferencia"]:
+         raise HTTPException(
+             status_code=status.HTTP_400_BAD_REQUEST,
+             detail="Se requiere un medio de pago válido ('Efectivo' o 'Transferencia') para la venta en caja."
+         )
 
-    # Calcular cantidad total
     total_quantity = sum(line.cantidad for line in venta.lineas)
+    # Usar date.today() o la función con timezone si la implementaste
+    current_argentina_date = date.today()
 
     nueva_venta = Sale(
         quantity_product=total_quantity,
         observation=venta.observation,
-        date=date.today(),
-        order_confirmed=True,      # Confirmada por defecto en caja
-        sale_in_register=True,     # Registrada por defecto en caja
-        pagado=True,               # Pagado por defecto en caja
-        medioPago="Caja",          # Medio de pago por defecto
+        date=current_argentina_date,
+        order_confirmed=True,
+        sale_in_register=True,
+        pagado=True,
+        medioPago=venta.medioPago,  # Tomar el valor enviado desde el form
         user_id=usuario_caja_id
     )
 
     db.add(nueva_venta)
-    # Es importante hacer flush aquí para obtener el ID de nueva_venta 
-    # antes de crear las líneas, pero el commit final irá después de descontar stock.
-    db.flush() 
+    db.flush()
 
     nuevas_lineas = []
-    productos_modificados = [] # Para refrescar después del commit si es necesario
+    productos_modificados = []
 
-    # --- INICIO LÓGICA DE STOCK ---
     try:
         for index, linea in enumerate(venta.lineas):
-            # Usar with_for_update() para bloquear la fila del producto y evitar race conditions
             producto = db.query(Product).filter(Product.id == linea.product_id).with_for_update().first()
-            
             if not producto:
-                # Si no se encuentra el producto, revertimos todo y lanzamos error
-                db.rollback() 
+                db.rollback()
                 raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Producto con id {linea.product_id} no encontrado")
-
-            # Verificar stock ANTES de crear la línea
             if producto.stock < linea.cantidad:
-                db.rollback() # Revertir la transacción
+                db.rollback()
                 raise HTTPException(
                     status_code=status.HTTP_409_CONFLICT,
                     detail=f"Stock insuficiente para '{producto.nombre}'. Stock actual: {producto.stock}, Solicitado: {linea.cantidad}"
                 )
-            
-            # Descontar stock
             producto.stock -= linea.cantidad
-            productos_modificados.append(producto) # Guardar referencia si necesitas refrescar
-
-            # Crear la línea de venta
+            productos_modificados.append(producto)
             linea_venta = LineOfSale(
                 cantidad=linea.cantidad,
                 numeroDeLinea=index + 1,
-                precio=producto.precioActual, # Usar el precio actual del producto
+                precio=producto.precioActual,
                 sale_id=nueva_venta.id,
                 product_id=linea.product_id,
             )
             db.add(linea_venta)
             nuevas_lineas.append(linea_venta)
-
-        # Si todo salió bien, confirmar todos los cambios (venta, líneas, stock)
         db.commit()
-
     except HTTPException as http_exc:
-         # Si hubo un HTTPException (ej. stock insuficiente), ya hicimos rollback
-         # Simplemente relanzamos la excepción
          raise http_exc
     except Exception as e:
-        # Si hubo cualquier otro error durante el proceso
         db.rollback()
+        print(f"Error inesperado procesando venta en caja: {e}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Error inesperado procesando la venta: {e}"
+            detail="Error inesperado procesando la venta en caja."
         )
-    # --- FIN LÓGICA DE STOCK ---
 
-    # Refrescar la venta para asegurar que la respuesta incluya todo desde la BD
     db.refresh(nueva_venta)
-    # Asignar las líneas creadas para la respuesta (SQLAlchemy puede no cargarlas automáticamente después del commit)
-    # Aunque SaleAdminView debería poder cargarlas si las relaciones están bien, 
-    # asignarlas explícitamente puede ser más seguro dependiendo de la config.
-    # Si usas orm_mode = True y las relaciones están bien, esto podría ser redundante, pero no daña.
-    nueva_venta.line_of_sales = nuevas_lineas 
+    # Cargar relaciones para la respuesta si es necesario
+    db.refresh(nueva_venta, ['line_of_sales', 'user'])
+    for linea in nuevas_lineas:
+        db.refresh(linea, ['product'])
 
     return nueva_venta
+
 
 
 
