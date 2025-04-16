@@ -1,4 +1,5 @@
 // src/components/OrderForm.jsx
+// (COMPLETO Y CORREGIDO)
 import React, { useState, useEffect } from 'react';
 import ProductService from '../api/productService';
 import { createOnlineSale } from '../api/saleService';
@@ -7,31 +8,33 @@ const OrderForm = ({ onClose, onOrderPlaced }) => {
   const [products, setProducts] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
-  // Ya no necesitamos selectedProducts, manejamos con el estado de cada producto
   const [observations, setObservations] = useState({});
   const [generalObservation, setGeneralObservation] = useState('');
+  // --- NUEVO: Estado para medio de pago ---
+  const [paymentMethod, setPaymentMethod] = useState('Efectivo'); // Default a Efectivo
+
   const [submitting, setSubmitting] = useState(false);
 
   useEffect(() => {
     const fetchProducts = async () => {
+      setLoading(true); // Asegurar que setLoading se setea a true al inicio
+      setError(null);
       try {
         const data = await ProductService.getProducts();
-        // Filtrar y preparar productos disponibles para la venta
         const availableProducts = data
-            .filter(p => p.mostrarEnSistema && p.stock > 0) // Solo visibles y con stock
+            .filter(p => p.mostrarEnSistema && p.stock > 0)
             .map(product => ({
               ...product,
               selected: false,
-              quantity: 1 // Inicializar cantidad en 1
+              quantity: 1 // Inicializar cantidad en 1 por defecto
             }));
         setProducts(availableProducts);
-        setLoading(false);
       } catch (err) {
-        setError('Error al cargar los productos disponibles');
+        setError('Error al cargar los productos disponibles.');
+      } finally {
         setLoading(false);
       }
     };
-
     fetchProducts();
   }, []);
 
@@ -46,10 +49,7 @@ const OrderForm = ({ onClose, onOrderPlaced }) => {
   const handleQuantityChange = (productId, quantity) => {
      const product = products.find(p => p.id === productId);
      if (!product) return;
-
-     // Validar cantidad: > 0 y <= stock disponible
      const newQuantity = Math.max(1, Math.min(quantity, product.stock));
-
      setProducts(currentProducts =>
       currentProducts.map(p =>
         p.id === productId ? { ...p, quantity: newQuantity } : p
@@ -76,6 +76,7 @@ const OrderForm = ({ onClose, onOrderPlaced }) => {
         throw new Error('Debes seleccionar al menos un producto');
       }
 
+      // Combina observaciones (igual que antes)
       let allObservations = generalObservation || '';
       selectedItems.forEach(product => {
         const productObs = observations[product.id];
@@ -84,23 +85,26 @@ const OrderForm = ({ onClose, onOrderPlaced }) => {
         }
       });
 
+      // --- CAMBIO: Incluir medio de pago en los datos a enviar ---
       const saleData = {
-        observation: allObservations.trim() || null, // Enviar null si está vacía
+        observation: allObservations.trim() || null,
+        medioPago: paymentMethod, // <-- Añadir el seleccionado
         line_of_sales: selectedItems.map(product => ({
           cantidad: product.quantity,
           product_id: product.id
         }))
       };
+      // ----------------------------------------------------------
 
       await createOnlineSale(saleData);
 
       setSubmitting(false);
       if (onOrderPlaced) onOrderPlaced();
-      if (onClose) onClose(); // Cerrar modal en éxito
+      if (onClose) onClose();
     } catch (err) {
       setSubmitting(false);
       const errorMsg = err.response?.data?.detail || err.message || 'Error al realizar el pedido';
-      console.error("Error detallado:", err.response?.data || err);
+      console.error("Error detallado al crear pedido:", err.response?.data || err);
       setError(errorMsg);
     }
   };
@@ -109,21 +113,21 @@ const OrderForm = ({ onClose, onOrderPlaced }) => {
 
   return (
     <div className="order-form">
-      {/* El título h2 lo maneja el Modal */}
+      <h2>Realizar Pedido</h2>
       {error && <p className="error">{error}</p>}
 
       <form onSubmit={handleSubmit}>
-        <div className="product-selection" style={{ maxHeight: '50vh', overflowY: 'auto', marginBottom: '1rem' }}>
+        <div className="product-selection" style={{ maxHeight: '45vh', overflowY: 'auto', marginBottom: '1rem' }}>
           {products.length === 0 ? (
              <p>No hay productos disponibles para pedir en este momento.</p>
            ) : (
             <table className="product-table">
               <thead>
                 <tr>
-                  <th>Seleccionar</th>
+                  <th>Sel.</th> {/* Abreviado */}
                   <th>Producto</th>
                   <th>Precio</th>
-                  <th>Disponibles</th>
+                  <th>Disp.</th> {/* Abreviado */}
                   <th>Cantidad</th>
                   <th>Observación (Opcional)</th>
                 </tr>
@@ -131,7 +135,6 @@ const OrderForm = ({ onClose, onOrderPlaced }) => {
               <tbody>
                 {products.map(product => (
                   <tr key={product.id}>
-                    {/* Añadir data-label a cada td */}
                     <td data-label="Seleccionar">
                       <input
                         type="checkbox"
@@ -146,7 +149,7 @@ const OrderForm = ({ onClose, onOrderPlaced }) => {
                       <input
                         type="number"
                         min="1"
-                        max={product.stock} // Limitar al stock
+                        max={product.stock}
                         value={product.quantity || 1}
                         onChange={(e) => handleQuantityChange(product.id, parseInt(e.target.value, 10) || 1)}
                         disabled={!product.selected || submitting}
@@ -169,13 +172,29 @@ const OrderForm = ({ onClose, onOrderPlaced }) => {
           )}
         </div>
 
+        {/* --- NUEVO: Selección de Medio de Pago --- */}
+        <div className="form-group">
+          <label htmlFor="orderPaymentMethod">Forma de Pago:</label>
+          <select
+            id="orderPaymentMethod"
+            value={paymentMethod}
+            onChange={(e) => setPaymentMethod(e.target.value)}
+            disabled={submitting}
+            required
+          >
+            <option value="Efectivo">Efectivo al retirar</option>
+            <option value="Transferencia">Transferencia</option>
+          </select>
+        </div>
+        {/* --- FIN NUEVO --- */}
+
         <div className="form-group">
           <label htmlFor="generalObservation">Observación General del Pedido (Opcional):</label>
           <textarea
             id="generalObservation"
             value={generalObservation}
             onChange={(e) => setGeneralObservation(e.target.value)}
-            placeholder="Ej: Entregar después de las 14hs"
+            placeholder="Ej: Entregar después de las 14hs, Alergias..."
             disabled={submitting}
             rows={3}
           />

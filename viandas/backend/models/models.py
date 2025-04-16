@@ -49,6 +49,7 @@ class Product(Base):
     foto = Column(String, nullable=True)  # Puedes almacenar la URL de la foto o la ruta del archivo
     stock = Column(Integer, nullable=False)
     stockMinimo = Column(Integer, nullable=False)
+    is_active = Column(Boolean, default=True, nullable=False, index=True)
     
     # Relationship to LineOfSale
     line_of_sales = relationship("LineOfSale", back_populates="product")

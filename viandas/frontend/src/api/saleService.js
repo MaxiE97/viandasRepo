@@ -1,43 +1,43 @@
 // src/api/saleService.js
+// (COMPLETO Y CORREGIDO)
 import API from "./axios"; // Tu instancia configurada de Axios
 
 const SALE_API_URL = '/sales'; // Prefijo base para las rutas de ventas
 
-// --- Funciones existentes ---
-
 /**
  * Crea un nuevo pedido online para el usuario logueado.
- * @param {object} saleData - Datos de la venta (formato SaleWithLines: { observation, line_of_sales: [...] }).
+ * @param {object} saleData - Datos de la venta (formato SaleWithLines: { observation, medioPago, line_of_sales: [...] }).
  * @returns {Promise<object>} - La venta creada con sus líneas.
  */
 export const createOnlineSale = async (saleData) => {
   try {
-    // Asume que la ruta para crear venta online es /sales/online
-    const response = await API.post(`${SALE_API_URL}/online`, saleData); 
+    // El objeto saleData ya debería incluir medioPago desde OrderForm.jsx
+    const response = await API.post(`${SALE_API_URL}/online`, saleData);
     return response.data;
   } catch (error) {
     console.error("Error creating online sale:", error.response?.data || error.message);
-    throw error.response?.data || new Error("Error al crear el pedido online");
+    // Mejorar el mensaje de error para el usuario
+    const detail = error.response?.data?.detail;
+    if (typeof detail === 'string' && detail.includes("Stock insuficiente")) {
+       throw new Error(detail); // Propagar mensaje específico de stock
+    }
+    throw error.response?.data || new Error("Error al crear el pedido online. Verifica los productos y cantidades.");
   }
 };
 
 /**
- * Obtiene los pedidos del usuario actual (Implementación Futura).
+ * Obtiene los pedidos del usuario actual (Implementación Futura - sin cambios).
  * @returns {Promise<Array>} - Lista de ventas del usuario.
  */
 export const getUserSales = async () => {
   try {
-    // Asume una ruta /sales/user para obtener ventas del usuario logueado
-    const response = await API.get(`${SALE_API_URL}/user`); 
+    const response = await API.get(`${SALE_API_URL}/user`);
     return response.data;
   } catch (error) {
     console.error("Error fetching user sales:", error.response?.data || error.message);
-    // Podrías querer un mensaje de error más específico si se implementa
-    throw error.response?.data || new Error("Error al obtener los pedidos del usuario"); 
+    throw error.response?.data || new Error("Error al obtener los pedidos del usuario");
   }
 };
-
-// --- Nuevas Funciones para Admin Sales ---
 
 /**
  * [ADMIN] Obtiene los pedidos solicitados online (no confirmados, no registrados).
@@ -73,8 +73,7 @@ export const getPedidosPendientesRetiro = async () => {
  */
 export const getVentasFinalizadas = async () => {
   try {
-    // El endpoint en tu backend para esto es /sales/ventas
-    const response = await API.get(`${SALE_API_URL}/ventas`); 
+    const response = await API.get(`${SALE_API_URL}/ventas`);
     return response.data;
   } catch (error) {
     console.error("Error fetching ventas finalizadas:", error.response?.data || error.message);
@@ -119,11 +118,15 @@ export const markAsPaid = async (saleId) => {
  */
 export const registerSaleInCaja = async (saleId) => {
   try {
-    // Usa el endpoint que creamos en el backend: PUT /sales/{sale_id}/register
-    const response = await API.put(`${SALE_API_URL}/${saleId}/register`); 
+    const response = await API.put(`${SALE_API_URL}/${saleId}/register`);
     return response.data;
   } catch (error) {
     console.error(`Error registering sale ${saleId} in caja:`, error.response?.data || error.message);
+     // Propagar mensaje de error específico si es de stock
+     const detail = error.response?.data?.detail;
+     if (typeof detail === 'string' && detail.includes("Stock insuficiente")) {
+        throw new Error(detail);
+     }
     throw error.response?.data || new Error("Error al registrar venta en caja");
   }
 };
@@ -131,22 +134,24 @@ export const registerSaleInCaja = async (saleId) => {
 
 /**
  * [ADMIN] Crea una venta manual en caja (cliente anónimo).
- * @param {object} saleData - Datos de la venta (formato SaleWithLines: { observation, line_of_sales: [{cantidad, product_id}] }).
+ * @param {object} saleData - Datos de la venta (formato SaleWithLines: { observation, medioPago, line_of_sales: [...] }).
  * @returns {Promise<object>} - La venta creada.
  */
 export const createCajaSale = async (saleData) => {
   try {
-    // El endpoint es POST /sales/ventas/caja según tu backend
-    const response = await API.post(`${SALE_API_URL}/ventas/caja`, saleData); 
+    // saleData ya incluye medioPago desde CajaSaleForm.jsx
+    const response = await API.post(`${SALE_API_URL}/ventas/caja`, saleData);
     return response.data;
   } catch (error) {
     console.error("Error creating caja sale:", error.response?.data || error.message);
+    // Propagar mensaje de error específico si es de stock
+     const detail = error.response?.data?.detail;
+     if (typeof detail === 'string' && detail.includes("Stock insuficiente")) {
+        throw new Error(detail);
+     }
     throw error.response?.data || new Error("Error al crear venta en caja");
   }
 };
-
-// No se necesita export default al usar exportaciones nombradas
-
 
 /**
  * Obtiene los pedidos del usuario actual listos para retirar.
@@ -154,12 +159,10 @@ export const createCajaSale = async (saleData) => {
  */
 export const getMyReadyOrders = async () => {
   try {
-    // Llama al nuevo endpoint del backend
     const response = await API.get(`${SALE_API_URL}/my-orders/ready-for-pickup`);
     return response.data;
   } catch (error) {
     console.error("Error fetching ready orders:", error.response?.data || error.message);
-    // Lanza el error para que el componente lo maneje
     throw error.response?.data || new Error("Error al obtener los pedidos listos para retirar");
   }
 };

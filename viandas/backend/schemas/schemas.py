@@ -1,4 +1,5 @@
-#shemas.py
+# viandas/backend/schemas/schemas.py
+# (COMPLETO Y CORREGIDO para Soft Delete)
 
 from pydantic import BaseModel, EmailStr, Field
 from datetime import date
@@ -6,26 +7,23 @@ from typing import Optional, List
 
 # --------------------
 # User Schemas
-
 # --------------------
 class UserBase(BaseModel):
     email: EmailStr
     name: str
-    apellido: str  # Nuevo campo
-    celular: str
-
-
+    apellido: Optional[str] = None
+    celular: Optional[str] = None
 
 class UserCreate(UserBase):
     password: str
 
 class User(UserBase):
     id: int
-    is_active: bool
-    role: str  # <-- Agregamos el rol aquí
+    is_active: bool # Este es el is_active del usuario
+    role: str
 
     class Config:
-        orm_mode = True
+        from_attributes = True
 
 # --------------------
 # Token Schemas
@@ -38,83 +36,88 @@ class TokenData(BaseModel):
     email: Optional[str] = None
 
 # --------------------
-# Sale Schemas
-# --------------------
-class SaleCreate(BaseModel):
-    quantity_product: int
-    observation: Optional[str] = None
-    date: date
-    order_confirmed: bool
-    sale_in_register: bool
-    medioPago: Optional[str] = None  # Nuevo campo
-    pagado: Optional[bool] = False
-
-    class Config:
-        orm_mode = True
-
-# --------------------
 # Product Schemas
 # --------------------
 class ProductBase(BaseModel):
     nombre: str
-    precioActual: float
+    precioActual: float = Field(..., gt=0)
     detalle: Optional[str] = None
     mostrarEnSistema: Optional[bool] = True
-    stock: int
-    stockMinimo: int
-    foto: Optional[str] = None  # Campo foto
+    stock: int = Field(..., ge=0)
+    stockMinimo: int = Field(..., ge=0)
+    foto: Optional[str] = None
+    # is_active es manejado por el modelo al crear,
+    # pero lo incluimos aquí para claridad y para ProductUpdate
+    is_active: Optional[bool] = True # Este es el is_active del producto
 
 class ProductCreate(ProductBase):
+    # No necesita is_active aquí, usará el default del modelo
     pass
 
+class ProductUpdate(BaseModel):
+    # Esquema específico para actualizar, todos los campos son opcionales
+    nombre: Optional[str] = None
+    precioActual: Optional[float] = Field(None, gt=0)
+    detalle: Optional[str] = None
+    mostrarEnSistema: Optional[bool] = None
+    stock: Optional[int] = Field(None, ge=0)
+    stockMinimo: Optional[int] = Field(None, ge=0)
+    foto: Optional[str] = None
+    is_active: Optional[bool] = None # Permitir actualizar is_active explícitamente
+
 class Product(ProductBase):
+    # Esquema para devolver un producto desde la API
     id: int
+    is_active: bool # Asegurar que siempre se devuelva el estado
 
     class Config:
-        orm_mode = True
+        from_attributes = True # Habilitar modo ORM
 
 # --------------------
 # LineOfSale Schemas
 # --------------------
 class LineOfSaleBase(BaseModel):
-    cantidad: int
-  #  numeroDeLinea: int
+    cantidad: int = Field(..., gt=0)
 
 class LineOfSaleCreate(LineOfSaleBase):
     product_id: int
 
 class LineOfSale(LineOfSaleBase):
     id: int
+    numeroDeLinea: Optional[int] = None
+    precio: Optional[float] = None
 
     class Config:
-        orm_mode = True
-
-
+        from_attributes = True
 
 # --------------------
-# Sale with LineOfSale
+# Sale with LineOfSale (Esquema para recibir datos en creación)
 # --------------------
-
 class SaleWithLines(BaseModel):
     observation: Optional[str] = None
-    lineas: List[LineOfSaleCreate] = Field(..., alias="line_of_sales")
+    medioPago: Optional[str] = None
+    line_of_sales: List[LineOfSaleCreate]
 
     class Config:
-        from_attributes = True  # Para Pydantic v2
-        allow_population_by_field_name = True
+        from_attributes = True
 
 
+# --- Schemas para VISTAS (Devolver datos) ---
+
+# Línea de venta con info del producto para mostrarla
 class LineOfSaleFull(BaseModel):
     id: int
     cantidad: int
-    numeroDeLinea: int
+    numeroDeLinea: Optional[int] = None
     precio: float
-    product: Product  # Relación al producto
+    # Product aquí devolverá el producto completo, incluyendo su estado is_active
+    # lo cual está bien para mostrar ventas pasadas.
+    product: Product # Usa el schema Product definido arriba
 
     class Config:
-        orm_mode = True
+        from_attributes = True
 
-
+# Vista completa de la venta para el admin o cliente
 class SaleAdminView(BaseModel):
     id: int
     quantity_product: int
@@ -124,8 +127,8 @@ class SaleAdminView(BaseModel):
     sale_in_register: bool
     medioPago: Optional[str]
     pagado: bool
-    user: User  # Relación con el usuario
-    line_of_sales: List[LineOfSaleFull]  # Lista de líneas con productos
+    user: Optional[User] = None # Puede ser null para ventas de caja
+    line_of_sales: List[LineOfSaleFull] # Usa LineOfSaleFull
 
     class Config:
-        orm_mode = True
+        from_attributes = True

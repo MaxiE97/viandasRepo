@@ -1,193 +1,303 @@
-# routes/sales.py
-from fastapi import APIRouter, Depends, HTTPException, Body, status 
-from sqlalchemy.orm import Session,joinedload 
-from models.models import Sale, User, LineOfSale, Product
-from schemas.schemas import SaleCreate, SaleWithLines, LineOfSaleCreate, SaleAdminView
-from api.deps import get_db, get_current_user
-from datetime import date
-from typing import List
+# viandas/backend/routes/sales.py
+# (COMPLETO Y CORREGIDO con validación is_active)
 
+from fastapi import APIRouter, Depends, HTTPException, Body, status
+from sqlalchemy.orm import Session, joinedload, selectinload
+# Asegúrate que los imports sean correctos para tu estructura
+from models.models import Sale, User, LineOfSale, Product
+from schemas.schemas import SaleWithLines, LineOfSaleCreate, SaleAdminView, User as UserSchema # Renombrar UserSchema si choca
+from api.deps import get_db, get_current_user
+from datetime import date, datetime
+from typing import List
+import pytz # Para zona horaria
+from sqlalchemy.exc import SQLAlchemyError # Para manejo de errores DB
 
 router = APIRouter()
 
+# Definir la zona horaria de Argentina
+argentina_tz = pytz.timezone('America/Argentina/Buenos_Aires')
 
-@router.post("/online", response_model=SaleWithLines)
+# --- Helper para obtener fecha actual en Argentina ---
+def get_current_argentina_date():
+    return datetime.now(argentina_tz).date() # Usar .date() para obtener solo la fecha
+
+# --- Helper para requerir admin ---
+def require_admin(current_user: UserSchema = Depends(get_current_user)):
+    """Dependency to ensure the user is an admin."""
+    if not hasattr(current_user, 'role') or current_user.role != "admin":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Acceso denegado: Requiere permisos de administrador",
+        )
+    return current_user
+
+@router.post("/online", response_model=SaleAdminView)
 def create_sale(
-    sales: SaleWithLines,
-    current_user: User = Depends(get_current_user),
+    sales_data: SaleWithLines,
+    current_user: User = Depends(get_current_user), # Usar Modelo User
     db: Session = Depends(get_db)
 ):
-    lines = sales.lineas
+    """
+    Crea un nuevo pedido online para el usuario logueado.
+    Valida medio de pago y que los productos estén activos.
+    """
+    lines_data = sales_data.line_of_sales
+    if not lines_data:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="El pedido debe contener al menos un producto.")
 
-    # Calcular la cantidad total sumando la cantidad de cada línea
-    total_quantity = sum(line.cantidad for line in lines)
+    if sales_data.medioPago and sales_data.medioPago not in ["Efectivo", "Transferencia"]:
+         raise HTTPException(
+             status_code=status.HTTP_400_BAD_REQUEST,
+             detail="Medio de pago inválido. Debe ser 'Efectivo' o 'Transferencia'."
+         )
 
-    # Crear la venta usando la cantidad total calculada
+    total_quantity = sum(line.cantidad for line in lines_data)
+    current_date = get_current_argentina_date()
+
     new_sale = Sale(
-        quantity_product=total_quantity,  # Se asigna la suma total
-        observation=sales.observation,
-        date=date.today(),
+        quantity_product=total_quantity,
+        observation=sales_data.observation,
+        date=current_date,
         order_confirmed=False,
         sale_in_register=False,
         pagado=False,
+        medioPago=sales_data.medioPago,
         user_id=current_user.id
     )
 
     db.add(new_sale)
-    db.flush()  # Se obtiene el ID de la venta antes de agregar las líneas
 
-    new_lines = []
-    # Usar enumerate para asignar automáticamente el número de línea
-    for index, line in enumerate(lines):
-        product = db.query(Product).filter(Product.id == line.product_id).first()
-        if not product:
-            raise HTTPException(status_code=404, detail=f"Product with id {line.product_id} not found")
+    try:
+        db.flush() # Obtener el ID de new_sale ANTES del bucle
 
-        new_line = LineOfSale(
-            cantidad=line.cantidad,
-            numeroDeLinea=index + 1,  # Se asigna automáticamente el número de línea
-            precio=product.precioActual,
-            sale_id=new_sale.id,
-            product_id=line.product_id,
-        )
-        db.add(new_line)
-        new_lines.append(new_line)  # Se agregan las líneas para devolver en la respuesta
+        for index, line_data in enumerate(lines_data):
+            # Bloquear producto para evitar race conditions
+            product = db.query(Product).filter(Product.id == line_data.product_id).with_for_update().first()
 
-    db.commit()
-    db.refresh(new_sale)
+            if not product:
+                # No es necesario rollback aquí, fallará el commit general
+                raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Producto con id {line_data.product_id} no encontrado.")
 
-    # Agregar las líneas de venta a la respuesta
-    new_sale.line_of_sales = new_lines
+            # --- VALIDACIÓN SOFT DELETE ---
+            if not product.is_active:
+                 raise HTTPException(
+                     status_code=status.HTTP_400_BAD_REQUEST,
+                     detail=f"El producto '{product.nombre}' ya no está disponible."
+                 )
+            # ----------------------------
 
-    return new_sale
+            # Verificar stock ANTES de crear la línea
+            if product.stock < line_data.cantidad:
+                 raise HTTPException(
+                    status_code=status.HTTP_409_CONFLICT,
+                    detail=f"Stock insuficiente para '{product.nombre}'. Stock actual: {product.stock}, Solicitado: {line_data.cantidad}"
+                )
+
+            # No descontar stock para pedidos online aquí
+
+            new_line = LineOfSale(
+                cantidad=line_data.cantidad,
+                numeroDeLinea=index + 1,
+                precio=product.precioActual,
+                sale_id=new_sale.id, # Usar ID obtenido del flush
+                product_id=line_data.product_id,
+            )
+            db.add(new_line)
+            # No es necesario el append a new_lines_objects si no se usa
+
+        db.commit() # Confirmar todos los cambios (venta, líneas)
+
+    except HTTPException as http_exc:
+         db.rollback() # Revertir si hubo un error HTTP esperado
+         raise http_exc
+    except SQLAlchemyError as e:
+        db.rollback()
+        print(f"Error de base de datos al crear venta online: {e}")
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Error interno al procesar el pedido.")
+    except Exception as e:
+        db.rollback()
+        print(f"Error inesperado al crear venta online: {e}")
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Error inesperado al crear el pedido.")
+
+    # Cargar relaciones para la respuesta completa de forma eficiente
+    sale_for_response = db.query(Sale).options(
+        selectinload(Sale.user),
+        selectinload(Sale.line_of_sales).selectinload(LineOfSale.product) # Carga producto activo o inactivo
+    ).filter(Sale.id == new_sale.id).one_or_none() # one_or_none es más seguro
+
+    if not sale_for_response:
+         # Si no se encuentra después del commit, algo raro pasó
+         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Error al recuperar la venta creada.")
+
+    return sale_for_response
 
 
-# GET todas las ventas (ADMIN)
+# --- Rutas de Admin ---
+
 @router.get("/all", response_model=List[SaleAdminView])
 def get_all_sales_admin(
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user)
+    admin_user: UserSchema = Depends(require_admin) # Requiere admin
 ):
-    if current_user.role != "admin":
-        raise HTTPException(status_code=403, detail="No autorizado")
-
-    sales = db.query(Sale).all()
+    """Obtiene todas las ventas (admin)."""
+    try:
+        sales = db.query(Sale).options(
+            selectinload(Sale.user),
+            selectinload(Sale.line_of_sales).selectinload(LineOfSale.product) # Carga producto activo o inactivo
+        ).order_by(Sale.id.desc()).all()
+    except Exception as e:
+        print(f"Error reading all sales: {e}")
+        raise HTTPException(status_code=500, detail="Error interno al obtener las ventas.")
     return sales
 
-
-# GET venta por ID (ADMIN)
 @router.get("/admin/{sale_id}", response_model=SaleAdminView)
 def get_sale_by_id_admin(
     sale_id: int,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user)
+    admin_user: UserSchema = Depends(require_admin) # Requiere admin
 ):
-    if current_user.role != "admin":
-        raise HTTPException(status_code=403, detail="No autorizado")
-
-    sale = db.query(Sale).filter(Sale.id == sale_id).first()
+    """Obtiene una venta específica por ID (admin)."""
+    sale = db.query(Sale).options(
+        selectinload(Sale.user),
+        selectinload(Sale.line_of_sales).selectinload(LineOfSale.product) # Carga producto activo o inactivo
+    ).filter(Sale.id == sale_id).first()
     if not sale:
         raise HTTPException(status_code=404, detail="Venta no encontrada")
-    
     return sale
 
-
-# PUT para confirmar venta (ADMIN)
 @router.put("/{sale_id}/confirm", response_model=SaleAdminView)
 def confirm_sale_admin(
     sale_id: int,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user)
+    admin_user: UserSchema = Depends(require_admin) # Requiere admin
 ):
-    if current_user.role != "admin":
-        raise HTTPException(status_code=403, detail="No autorizado")
-
+    """Confirma un pedido online (admin)."""
     sale = db.query(Sale).filter(Sale.id == sale_id).first()
     if not sale:
         raise HTTPException(status_code=404, detail="Venta no encontrada")
+    if sale.order_confirmed:
+         return sale # Ya está confirmada, operación idempotente
 
     sale.order_confirmed = True
-    db.commit()
-    db.refresh(sale)
+    try:
+        db.commit()
+        db.refresh(sale) # Refrescar para obtener estado actualizado
+    except Exception as e:
+        db.rollback()
+        print(f"Error confirming sale {sale_id}: {e}")
+        raise HTTPException(status_code=500, detail="Error interno al confirmar la venta.")
 
-    return sale
+    # Recargar con relaciones para la respuesta completa
+    sale_for_response = db.query(Sale).options(
+        selectinload(Sale.user),
+        selectinload(Sale.line_of_sales).selectinload(LineOfSale.product)
+    ).filter(Sale.id == sale.id).one_or_none() # Usar one_or_none
 
-# GET - Pedidos solicitados (no confirmados, no registrados)
+    if not sale_for_response:
+         raise HTTPException(status_code=500, detail="Error al recuperar la venta confirmada.")
+
+    return sale_for_response
+
 @router.get("/pedidos-solicitados", response_model=List[SaleAdminView])
 def get_pedidos_solicitados(
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user)
+    admin_user: UserSchema = Depends(require_admin) # Requiere admin
 ):
-    if current_user.role != "admin":
-        raise HTTPException(status_code=403, detail="No autorizado")
-
-    sales = db.query(Sale).filter(
-        Sale.order_confirmed == False,
-        Sale.sale_in_register == False
-    ).all()
+    """Obtiene pedidos online no confirmados ni registrados (admin)."""
+    try:
+        sales = db.query(Sale).options(
+            selectinload(Sale.user),
+            selectinload(Sale.line_of_sales).selectinload(LineOfSale.product)
+        ).filter(
+            Sale.order_confirmed == False,
+            Sale.sale_in_register == False
+        ).order_by(Sale.date.asc(), Sale.id.asc()).all()
+    except Exception as e:
+        print(f"Error fetching pedidos solicitados: {e}")
+        raise HTTPException(status_code=500, detail="Error interno al obtener los pedidos solicitados.")
     return sales
 
-
-# GET - Pedidos pendientes de retiro (confirmados, no registrados)
 @router.get("/pendientes-retiro", response_model=List[SaleAdminView])
 def get_pedidos_pendientes_retiro(
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user)
+    admin_user: UserSchema = Depends(require_admin) # Requiere admin
 ):
-    if current_user.role != "admin":
-        raise HTTPException(status_code=403, detail="No autorizado")
-
-    sales = db.query(Sale).filter(
-        Sale.order_confirmed == True,
-        Sale.sale_in_register == False
-    ).all()
+    """Obtiene pedidos online confirmados pero no registrados (admin)."""
+    try:
+        sales = db.query(Sale).options(
+            selectinload(Sale.user),
+            selectinload(Sale.line_of_sales).selectinload(LineOfSale.product)
+        ).filter(
+            Sale.order_confirmed == True,
+            Sale.sale_in_register == False
+        ).order_by(Sale.date.asc(), Sale.id.asc()).all()
+    except Exception as e:
+        print(f"Error fetching pendientes retiro: {e}")
+        raise HTTPException(status_code=500, detail="Error interno al obtener los pedidos pendientes.")
     return sales
 
-
-# GET - Ventas (registradas o confirmadas)
 @router.get("/ventas", response_model=List[SaleAdminView])
 def get_ventas_finalizadas(
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user)
+    admin_user: UserSchema = Depends(require_admin) # Requiere admin
 ):
-    if current_user.role != "admin":
-        raise HTTPException(status_code=403, detail="No autorizado")
-
-
-    sales = db.query(Sale).filter(
-        Sale.sale_in_register == True # Solo mostrar las marcadas como registradas/retiradas
-    ).order_by(Sale.date.desc()).all() # Mantenemos el orden opcional
-    # --- FIN CAMBIO ---
-
+    """Obtiene ventas ya registradas en caja (admin)."""
+    try:
+        sales = db.query(Sale).options(
+            selectinload(Sale.user),
+            selectinload(Sale.line_of_sales).selectinload(LineOfSale.product)
+        ).filter(
+            Sale.sale_in_register == True
+        ).order_by(Sale.date.desc(), Sale.id.desc()).all()
+    except Exception as e:
+        print(f"Error fetching ventas finalizadas: {e}")
+        raise HTTPException(status_code=500, detail="Error interno al obtener las ventas finalizadas.")
     return sales
 
-
-# PUT - Marcar como pagado
 @router.put("/{sale_id}/pagado", response_model=SaleAdminView)
 def set_pagado(
     sale_id: int,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user)
+    admin_user: UserSchema = Depends(require_admin) # Requiere admin
 ):
-    if current_user.role != "admin":
-        raise HTTPException(status_code=403, detail="No autorizado")
-
+    """Marca una venta como pagada (admin)."""
     sale = db.query(Sale).filter(Sale.id == sale_id).first()
     if not sale:
         raise HTTPException(status_code=404, detail="Venta no encontrada")
+    if sale.pagado:
+         return sale # Ya está pagada, idempotente
 
     sale.pagado = True
-    db.commit()
-    db.refresh(sale)
-    return sale
+    try:
+        db.commit()
+        db.refresh(sale)
+    except Exception as e:
+        db.rollback()
+        print(f"Error setting sale {sale_id} as paid: {e}")
+        raise HTTPException(status_code=500, detail="Error interno al marcar como pagado.")
+
+    # Recargar con relaciones para la respuesta completa
+    sale_for_response = db.query(Sale).options(
+        selectinload(Sale.user),
+        selectinload(Sale.line_of_sales).selectinload(LineOfSale.product)
+    ).filter(Sale.id == sale.id).one_or_none()
+
+    if not sale_for_response:
+         raise HTTPException(status_code=500, detail="Error al recuperar la venta marcada como pagada.")
+
+    return sale_for_response
 
 
 @router.post("/ventas/caja", response_model=SaleAdminView)
 def crear_venta_en_caja(
-    venta: SaleWithLines = Body(...), # venta ahora incluye medioPago opcional
+    venta_data: SaleWithLines,
     db: Session = Depends(get_db),
+    admin_user: UserSchema = Depends(require_admin) # Requiere admin
 ):
-    usuario_caja_id = 5
+    """
+    Crea una venta directa en caja. Descuenta stock. Valida producto activo. (Admin)
+    """
+    usuario_caja_id = 5 # Considera buscarlo dinámicamente
     db_user_caja = db.query(User).filter(User.id == usuario_caja_id).first()
     if not db_user_caja:
          raise HTTPException(
@@ -195,100 +305,106 @@ def crear_venta_en_caja(
              detail=f"Usuario de caja con ID {usuario_caja_id} no encontrado."
          )
 
-    # Validar que se recibió un medio de pago válido desde el frontend
-    if not venta.medioPago or venta.medioPago not in ["Efectivo", "Transferencia"]:
+    if not venta_data.medioPago or venta_data.medioPago not in ["Efectivo", "Transferencia"]:
          raise HTTPException(
              status_code=status.HTTP_400_BAD_REQUEST,
              detail="Se requiere un medio de pago válido ('Efectivo' o 'Transferencia') para la venta en caja."
          )
 
-    total_quantity = sum(line.cantidad for line in venta.lineas)
-    # Usar date.today() o la función con timezone si la implementaste
-    current_argentina_date = date.today()
+    lines_data = venta_data.line_of_sales
+    if not lines_data:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="La venta debe contener al menos un producto.")
+
+    total_quantity = sum(line.cantidad for line in lines_data)
+    current_date = get_current_argentina_date()
 
     nueva_venta = Sale(
         quantity_product=total_quantity,
-        observation=venta.observation,
-        date=current_argentina_date,
+        observation=venta_data.observation,
+        date=current_date,
         order_confirmed=True,
         sale_in_register=True,
         pagado=True,
-        medioPago=venta.medioPago,  # Tomar el valor enviado desde el form
+        medioPago=venta_data.medioPago,
         user_id=usuario_caja_id
     )
 
     db.add(nueva_venta)
-    db.flush()
-
-    nuevas_lineas = []
-    productos_modificados = []
 
     try:
-        for index, linea in enumerate(venta.lineas):
-            producto = db.query(Product).filter(Product.id == linea.product_id).with_for_update().first()
+        db.flush() # Obtener ID de la venta
+
+        for index, linea_data in enumerate(lines_data):
+            # Bloquear producto
+            producto = db.query(Product).filter(Product.id == linea_data.product_id).with_for_update().first()
+
             if not producto:
-                db.rollback()
-                raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Producto con id {linea.product_id} no encontrado")
-            if producto.stock < linea.cantidad:
-                db.rollback()
+                raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Producto con id {linea_data.product_id} no encontrado.")
+
+            # --- VALIDACIÓN SOFT DELETE ---
+            if not producto.is_active:
+                 raise HTTPException(
+                     status_code=status.HTTP_400_BAD_REQUEST,
+                     detail=f"El producto '{producto.nombre}' ya no está disponible para la venta."
+                 )
+            # ----------------------------
+
+            if producto.stock < linea_data.cantidad:
                 raise HTTPException(
                     status_code=status.HTTP_409_CONFLICT,
-                    detail=f"Stock insuficiente para '{producto.nombre}'. Stock actual: {producto.stock}, Solicitado: {linea.cantidad}"
+                    detail=f"Stock insuficiente para '{producto.nombre}'. Stock actual: {producto.stock}, Solicitado: {linea_data.cantidad}"
                 )
-            producto.stock -= linea.cantidad
-            productos_modificados.append(producto)
+
+            # Descontar stock al registrar venta en caja
+            producto.stock -= linea_data.cantidad
+
             linea_venta = LineOfSale(
-                cantidad=linea.cantidad,
+                cantidad=linea_data.cantidad,
                 numeroDeLinea=index + 1,
                 precio=producto.precioActual,
                 sale_id=nueva_venta.id,
-                product_id=linea.product_id,
+                product_id=linea_data.product_id,
             )
             db.add(linea_venta)
-            nuevas_lineas.append(linea_venta)
-        db.commit()
+
+        db.commit() # Guardar venta, líneas y actualización de stock
+
     except HTTPException as http_exc:
-         raise http_exc
+        db.rollback()
+        raise http_exc
+    except SQLAlchemyError as e:
+        db.rollback()
+        print(f"Error de base de datos al crear venta en caja: {e}")
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Error interno al procesar la venta.")
     except Exception as e:
         db.rollback()
-        print(f"Error inesperado procesando venta en caja: {e}")
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Error inesperado procesando la venta en caja."
-        )
+        print(f"Error inesperado al crear venta en caja: {e}")
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Error inesperado al crear la venta.")
 
-    db.refresh(nueva_venta)
-    # Cargar relaciones para la respuesta si es necesario
-    db.refresh(nueva_venta, ['line_of_sales', 'user'])
-    for linea in nuevas_lineas:
-        db.refresh(linea, ['product'])
+    # Cargar relaciones para la respuesta completa
+    sale_for_response = db.query(Sale).options(
+        selectinload(Sale.user),
+        selectinload(Sale.line_of_sales).selectinload(LineOfSale.product) # Carga producto activo o inactivo
+    ).filter(Sale.id == nueva_venta.id).one_or_none()
 
-    return nueva_venta
+    if not sale_for_response:
+         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Error al recuperar la venta de caja creada.")
 
-
-
+    return sale_for_response
 
 
 @router.put("/{sale_id}/register", response_model=SaleAdminView)
 def register_sale_in_caja_admin(
     sale_id: int,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user)
+    admin_user: UserSchema = Depends(require_admin) # Requiere admin
 ):
     """
-    Marca una venta existente como registrada en caja (sale_in_register = True)
-    y descuenta el stock de los productos correspondientes.
-    Solo accesible para administradores.
+    Marca una venta online como registrada/retirada. Descuenta stock. Valida producto activo. (Admin)
     """
-    if current_user.role != "admin":
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="No autorizado para registrar ventas en caja"
-        )
-
-    # Cargar la venta y sus líneas de venta y productos asociados eficientemente
+    # Cargar la venta y sus líneas/productos eficientemente
     sale = db.query(Sale).options(
-        joinedload(Sale.line_of_sales).joinedload(LineOfSale.product) 
+        selectinload(Sale.line_of_sales).selectinload(LineOfSale.product)
     ).filter(Sale.id == sale_id).first()
 
     if not sale:
@@ -297,75 +413,90 @@ def register_sale_in_caja_admin(
             detail=f"Venta con id {sale_id} no encontrada"
         )
 
-    # Evitar doble descuento si ya está registrada
-    if sale.sale_in_register:
-        # Podrías devolver la venta tal cual o un mensaje específico
-         # raise HTTPException(
-         #     status_code=status.HTTP_400_BAD_REQUEST,
-         #     detail=f"La venta {sale_id} ya está registrada en caja."
-         # )
-         # O simplemente retornarla sin hacer cambios
-         return sale
-
-
-    # --- LÓGICA DE DESCUENTO DE STOCK ---
-    for line in sale.line_of_sales:
-        if not line.product: 
-             # Esto no debería pasar si la carga fue correcta, pero por seguridad
-             raise HTTPException(
-                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, 
-                detail=f"No se pudo cargar el producto para la línea {line.id}"
-             )
-
-        if line.product.stock < line.cantidad:
-            raise HTTPException(
-                status_code=status.HTTP_409_CONFLICT, # 409 Conflict es una buena opción
-                detail=f"Stock insuficiente para '{line.product.nombre}'. Stock actual: {line.product.stock}, Pedido: {line.cantidad}"
-            )
-
-        line.product.stock -= line.cantidad
-    # --- FIN LÓGICA DE DESCUENTO DE STOCK ---
-
-    # Marcar como registrada
-    sale.sale_in_register = True
-
-    try:
-        db.commit()
-        db.refresh(sale) # Refrescar sale
-        # Refrescar productos individualmente si es necesario ver el stock actualizado inmediatamente en la respuesta
-        # (Aunque la respuesta es SaleAdminView, refrescar sale ya podría ser suficiente)
-        # for line in sale.line_of_sales:
-        #     db.refresh(line.product) 
-    except Exception as e:
-         db.rollback() # Importante revertir si hay un error durante el commit
+    if not sale.order_confirmed:
          raise HTTPException(
-             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-             detail=f"Error al guardar cambios en la base de datos: {e}"
+             status_code=status.HTTP_400_BAD_REQUEST,
+             detail=f"El pedido {sale_id} debe estar confirmado antes de registrar el retiro."
          )
 
-    return sale
+    if sale.sale_in_register:
+        return sale # Ya está registrada, idempotente
+
+    try:
+        for line in sale.line_of_sales:
+            # Re-obtener producto con bloqueo para actualizar stock
+            product_to_update = db.query(Product).filter(Product.id == line.product_id).with_for_update().first()
+
+            if not product_to_update:
+                 raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=f"Error de integridad: Producto ID {line.product_id} no encontrado para la línea {line.id}.")
+
+            # --- VALIDACIÓN SOFT DELETE (al momento del retiro) ---
+            if not product_to_update.is_active:
+                 raise HTTPException(
+                     status_code=status.HTTP_400_BAD_REQUEST,
+                     detail=f"El producto '{product_to_update.nombre}' fue desactivado y no se puede completar el retiro."
+                 )
+            # ---------------------------------------------------
+
+            # Re-verificar stock al momento del retiro
+            if product_to_update.stock < line.cantidad:
+                raise HTTPException(
+                    status_code=status.HTTP_409_CONFLICT,
+                    detail=f"Stock insuficiente para '{product_to_update.nombre}' al momento del retiro. Stock actual: {product_to_update.stock}, Pedido: {line.cantidad}"
+                )
+            # Descontar stock AHORA
+            product_to_update.stock -= line.cantidad
+
+        # Marcar como registrada
+        sale.sale_in_register = True
+
+        db.commit() # Guardar cambios en stock y estado de la venta
+
+    except HTTPException as http_exc:
+        db.rollback()
+        raise http_exc
+    except SQLAlchemyError as e:
+         db.rollback()
+         print(f"Error de base de datos al registrar venta {sale_id}: {e}")
+         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Error interno al registrar el retiro.")
+    except Exception as e:
+        db.rollback()
+        print(f"Error inesperado al registrar venta {sale_id}: {e}")
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Error inesperado al registrar el retiro.")
+
+    # Recargar con relaciones para la respuesta completa
+    sale_for_response = db.query(Sale).options(
+        selectinload(Sale.user),
+        selectinload(Sale.line_of_sales).selectinload(LineOfSale.product)
+    ).filter(Sale.id == sale.id).one_or_none()
+
+    if not sale_for_response:
+         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Error al recuperar la venta registrada.")
+
+    return sale_for_response
 
 
 # GET - Pedidos del usuario actual listos para retirar
 @router.get("/my-orders/ready-for-pickup", response_model=List[SaleAdminView])
 def get_my_ready_orders(
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user)
+    current_user: User = Depends(get_current_user) # Usar Modelo User
 ):
     """
     Obtiene los pedidos del usuario autenticado que están confirmados
     pero aún no han sido marcados como registrados/retirados.
     """
-    # (Opcional: Podrías crear un Schema más simple como SaleReadyInfo si no quieres toda la info de SaleAdminView)
-    ready_sales = db.query(Sale).filter(
-        Sale.user_id == current_user.id,
-        Sale.order_confirmed == True,
-        Sale.sale_in_register == False
-    ).order_by(Sale.date.desc()).all() # Ordenar por fecha descendente opcionalmente
-
-    # Nota: Si usaras un schema más simple, asegúrate de que las relaciones necesarias
-    # (como user, line_of_sales.product) se carguen si las necesitas mostrar,
-    # o ajusta la query/schema para devolver solo los IDs/datos básicos.
-    # Con SaleAdminView, las relaciones ya deberían cargarse si están bien definidas en el schema.
+    try:
+        ready_sales = db.query(Sale).options(
+            selectinload(Sale.user), # Carga usuario (aunque sea el mismo)
+            selectinload(Sale.line_of_sales).selectinload(LineOfSale.product) # Carga producto activo o inactivo
+        ).filter(
+            Sale.user_id == current_user.id,
+            Sale.order_confirmed == True,
+            Sale.sale_in_register == False
+        ).order_by(Sale.date.desc(), Sale.id.desc()).all()
+    except Exception as e:
+        print(f"Error fetching ready orders for user {current_user.id}: {e}")
+        raise HTTPException(status_code=500, detail="Error interno al obtener los pedidos listos para retirar.")
 
     return ready_sales

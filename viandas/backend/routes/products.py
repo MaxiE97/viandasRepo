@@ -1,219 +1,199 @@
-# routes/products.py
-from fastapi import (
-    APIRouter, HTTPException, Depends, status, 
-    File, UploadFile # ¡Añadir File y UploadFile!
-)
+# viandas/backend/routes/products.py
+# (COMPLETO Y CORREGIDO para Soft Delete)
+
+from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
-from models.models import Product, User
-from schemas.schemas import ProductCreate, Product as ProductSchema, ProductBase
+# Ajusta los imports según tu estructura de proyecto
+from models import models
+from schemas import schemas
 from api.deps import get_db, get_current_user
-import shutil  # ¡Importar shutil!
-import uuid    # ¡Importar uuid!
-from pathlib import Path # ¡Importar Path!
+from typing import List
 
 router = APIRouter()
 
-# --- Directorio base para imágenes de productos ---
-IMAGE_DIR = Path("static/product_images")
-# Asegurarse que existe (aunque ya lo hicimos en main.py)
-IMAGE_DIR.mkdir(parents=True, exist_ok=True)
-
-# --- ENDPOINT PARA SUBIR IMAGEN ---
-@router.post("/upload-image/", status_code=status.HTTP_201_CREATED, tags=["products"])
-async def upload_product_image(
-    file: UploadFile = File(...),
-    current_user: User = Depends(get_current_user)
-):
-    """
-    Sube una imagen de producto. Requiere permisos de administrador.
-    Devuelve el nombre del archivo guardado relativo al directorio de imágenes.
-    """
+# --- Helper para obtener el usuario admin (opcional pero recomendado) ---
+def require_admin(current_user: models.User = Depends(get_current_user)):
+    """Dependency to ensure the user is an admin."""
     if current_user.role != "admin":
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="No tienes permiso para subir imágenes"
+            detail="Acceso denegado: Requiere permisos de administrador",
         )
+    return current_user
 
-    # Validación básica del tipo MIME
-    if not file.content_type.startswith("image/"):
+# --- CRUD de Productos ---
+
+@router.post("/", response_model=schemas.Product, status_code=status.HTTP_201_CREATED)
+def create_product(
+    product: schemas.ProductCreate,
+    db: Session = Depends(get_db),
+    admin_user: models.User = Depends(require_admin) # Requiere admin
+):
+    """
+    Creates a new product. Only accessible by admins.
+    Checks if a product with the same name already exists (active or inactive).
+    """
+    # Verificar si ya existe un producto con ese nombre (incluyendo inactivos)
+    existing_product = db.query(models.Product).filter(models.Product.nombre == product.nombre).first()
+    if existing_product:
+        detail_msg = f"Ya existe un producto con el nombre '{product.nombre}'."
+        if not existing_product.is_active:
+            detail_msg += " (Está inactivo, considere reactivarlo o usar otro nombre)."
         raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Tipo de archivo no permitido. Sube solo imágenes."
+            status_code=status.HTTP_409_CONFLICT,
+            detail=detail_msg
         )
 
-     # Validación de tamaño (ejemplo: máximo 5MB)
-    MAX_SIZE_MB = 5
-    MAX_SIZE_BYTES = MAX_SIZE_MB * 1024 * 1024
-
-    # Leer el tamaño del archivo de forma segura
-    # Necesitamos leer el archivo para saber su tamaño real antes de guardarlo
-    # Esto puede consumir memoria si los archivos son muy grandes.
-    # Una alternativa es limitar por `content-length` header si confías en él.
-    size = 0
-    CHUNK_SIZE = 1024 * 1024 # Leer en chunks de 1MB
-    while chunk := await file.read(CHUNK_SIZE):
-         size += len(chunk)
-         if size > MAX_SIZE_BYTES:
-              await file.close() # Asegurar cerrar el archivo
-              raise HTTPException(
-                  status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
-                  detail=f"El archivo es demasiado grande. Máximo permitido: {MAX_SIZE_MB}MB"
-              )
-    # Importante: Rebobinar el archivo para poder guardarlo después de leerlo
-    await file.seek(0)
-
-
-    # Generar nombre de archivo único
-    file_extension = Path(file.filename).suffix.lower() # Usar minúsculas para consistencia
-    # Validar extensiones permitidas si quieres ser más estricto
-    allowed_extensions = {".jpg", ".jpeg", ".png", ".gif", ".webp"}
-    if file_extension not in allowed_extensions:
-         await file.close()
-         raise HTTPException(
-             status_code=status.HTTP_400_BAD_REQUEST,
-             detail=f"Extensión de archivo no permitida. Permitidas: {', '.join(allowed_extensions)}"
-         )
-
-    unique_filename = f"{uuid.uuid4()}{file_extension}"
-    file_path = IMAGE_DIR / unique_filename
-
+    # Crear nuevo producto (is_active será True por defecto del modelo)
+    # model_dump() es el reemplazo de dict() en Pydantic v2
+    db_product = models.Product(**product.model_dump())
     try:
-        # Guardar el archivo en el servidor
-        with file_path.open("wb") as buffer:
-            shutil.copyfileobj(file.file, buffer)
-    except Exception as e:
-        # Manejo básico de errores al guardar
+        db.add(db_product)
+        db.commit()
+        db.refresh(db_product)
+    except Exception as e: # Captura errores generales de DB
+        db.rollback()
+        print(f"Error creating product: {e}") # Log error
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"No se pudo guardar la imagen: {e}"
+            detail="Error interno al crear el producto."
         )
-    finally:
-        # Asegúrate de cerrar el archivo de subida
-        await file.close()
-
-    # Devolver solo el nombre del archivo
-    return {"filename": unique_filename}
-# --- FIN ENDPOINT SUBIR IMAGEN ---
-
-
-# --- Endpoints existentes (NO necesitan cambios en su lógica principal) ---
-
-@router.get("/", response_model=list[ProductSchema], tags=["products"])
-def list_products(db: Session = Depends(get_db)):
-    """
-    Obtiene una lista de todos los productos.
-    """
-    return db.query(Product).all()
-
-@router.post("/", response_model=ProductSchema, status_code=status.HTTP_201_CREATED, tags=["products"])
-def create_product(
-    product: ProductCreate, # Ya incluye 'foto: Optional[str]'
-    current_user: User = Depends(get_current_user),
-    db: Session = Depends(get_db)
-):
-    """
-    Crea un nuevo producto. Solo accesible para administradores.
-    El campo 'foto' debe contener el nombre de archivo devuelto por /upload-image/.
-    """
-    if current_user.role != "admin":
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="No tienes permiso para crear productos"
-        )
-
-    # El nombre de archivo ya viene en product.foto (o es None)
-    new_product = Product(**product.dict()) 
-    db.add(new_product)
-    db.commit()
-    db.refresh(new_product)
-    return new_product
-
-
-@router.put("/{product_id}", response_model=ProductSchema, tags=["products"])
-def update_product(
-    product_id: int,
-    product_update: ProductCreate, # Ya incluye 'foto: Optional[str]'
-    current_user: User = Depends(get_current_user),
-    db: Session = Depends(get_db)
-):
-    """
-    Actualiza un producto existente por su ID. Solo accesible para administradores.
-    El campo 'foto' debe contener el nombre de archivo devuelto por /upload-image/.
-    Si 'foto' no se incluye en el request (y usas exclude_unset=True o similar), no se actualizará.
-    Si se envía 'foto' como null, se borrará la referencia en la BD (pero no el archivo).
-    """
-    if current_user.role != "admin":
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="No tienes permiso para actualizar productos"
-        )
-
-    db_product = db.query(Product).filter(Product.id == product_id).first()
-
-    if db_product is None:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Producto con id {product_id} no encontrado"
-        )
-
-    # TODO Opcional: Si se actualiza 'foto', borrar el archivo antiguo del servidor
-    # old_foto = db_product.foto
-    # new_foto = product_update.dict(exclude_unset=True).get('foto', old_foto) # Necesita exclude_unset=False si quieres setear a null
-    # if old_foto and new_foto != old_foto:
-    #      old_file_path = IMAGE_DIR / old_foto
-    #      if old_file_path.is_file():
-    #          old_file_path.unlink() # Borrar archivo viejo
-
-    # Actualizar usando todos los datos que lleguen (si usas exclude_unset=False en dict())
-    # o solo los que lleguen (si usas exclude_unset=True)
-    update_data = product_update.dict(exclude_unset=False) # O True si prefieres patch
-
-    for key, value in update_data.items():
-        if hasattr(db_product, key):
-            setattr(db_product, key, value)
-
-    db.commit()
-    db.refresh(db_product)
     return db_product
 
 
-@router.delete("/{product_id}", status_code=status.HTTP_204_NO_CONTENT, tags=["products"])
-def delete_product(
-    product_id: int,
-    current_user: User = Depends(get_current_user),
+@router.get("/", response_model=List[schemas.Product])
+def read_products(
+    skip: int = 0,
+    limit: int = 100,
     db: Session = Depends(get_db)
+    # current_user: models.User = Depends(get_current_user) # Descomentar si requiere login
 ):
     """
-    Elimina un producto existente por su ID. Solo accesible para administradores.
-    NOTA: Esto NO elimina el archivo de imagen asociado del servidor.
+    Gets a list of ACTIVE products.
+    Accessible by anyone (or logged-in users if dependency uncommented).
     """
-    if current_user.role != "admin":
+    try:
+        products = db.query(models.Product)\
+                     .filter(models.Product.is_active == True)\
+                     .order_by(models.Product.nombre)\
+                     .offset(skip)\
+                     .limit(limit)\
+                     .all()
+    except Exception as e:
+        print(f"Error reading products: {e}") # Log error
         raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="No tienes permiso para eliminar productos"
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Error interno al obtener los productos."
         )
+    return products
 
-    db_product = db.query(Product).filter(Product.id == product_id).first()
+
+@router.get("/{product_id}", response_model=schemas.Product)
+def read_product(
+    product_id: int,
+    db: Session = Depends(get_db)
+    # current_user: models.User = Depends(get_current_user) # Descomentar si requiere login
+):
+    """
+    Gets a specific product by ID, only if it's ACTIVE.
+    Accessible by anyone (or logged-in users if dependency uncommented).
+    """
+    try:
+        db_product = db.query(models.Product)\
+                       .filter(models.Product.id == product_id)\
+                       .filter(models.Product.is_active == True)\
+                       .first()
+    except Exception as e:
+        print(f"Error reading product {product_id}: {e}") # Log error
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Error interno al obtener el producto."
+        )
 
     if db_product is None:
+        # Devuelve 404 si no existe O si no está activo
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Producto no encontrado")
+    return db_product
+
+
+@router.put("/{product_id}", response_model=schemas.Product)
+def update_product(
+    product_id: int,
+    product_update: schemas.ProductUpdate, # Usar el schema específico de Update
+    db: Session = Depends(get_db),
+    admin_user: models.User = Depends(require_admin) # Requiere admin
+):
+    """
+    Updates an existing product. Only accessible by admins.
+    Allows updating any field, including is_active.
+    """
+    db_product = db.query(models.Product).filter(models.Product.id == product_id).first()
+    if db_product is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Producto no encontrado para actualizar")
+
+    # Verificar si se intenta cambiar el nombre a uno que ya existe (y no es el producto actual)
+    if product_update.nombre and product_update.nombre != db_product.nombre:
+         existing_product = db.query(models.Product).filter(
+                models.Product.nombre == product_update.nombre,
+                models.Product.id != product_id # Excluir el producto actual
+            ).first()
+         if existing_product:
+              raise HTTPException(
+                 status_code=status.HTTP_409_CONFLICT,
+                 detail=f"Ya existe otro producto con el nombre '{product_update.nombre}'."
+              )
+
+    # Actualizar los campos proporcionados en product_update
+    # model_dump(exclude_unset=True) solo incluye los campos enviados en el request
+    update_data = product_update.model_dump(exclude_unset=True)
+    for key, value in update_data.items():
+        setattr(db_product, key, value)
+
+    try:
+        db.commit()
+        db.refresh(db_product)
+    except Exception as e: # Captura errores generales de DB
+        db.rollback()
+        print(f"Error updating product {product_id}: {e}") # Log error
         raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Producto con id {product_id} no encontrado"
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Error interno al actualizar el producto."
         )
-
-    # --- Opcional: Borrar archivo de imagen antes de borrar el producto ---
-    # if db_product.foto:
-    #     file_path = IMAGE_DIR / db_product.foto
-    #     if file_path.is_file():
-    #         try:
-    #             file_path.unlink()
-    #         except OSError as e:
-    #             print(f"Advertencia: No se pudo borrar el archivo {file_path}: {e}") # Loggear error
-    # --- Fin Opcional ---
+    return db_product
 
 
-    db.delete(db_product)
-    db.commit()
+@router.delete("/{product_id}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_product(
+    product_id: int,
+    db: Session = Depends(get_db),
+    admin_user: models.User = Depends(require_admin) # Requiere admin
+):
+    """
+    Performs a soft delete on a product by setting is_active=False.
+    Only accessible by admins. Returns 204 No Content on success.
+    """
+    db_product = db.query(models.Product).filter(models.Product.id == product_id).first()
 
-    # No se devuelve contenido con el status 204
-    return None
+    if db_product is None:
+        # Si no existe, devolver 404 igual
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Producto no encontrado para eliminar")
+
+    # --- Lógica de Soft Delete ---
+    if db_product.is_active:
+        db_product.is_active = False
+        try:
+            db.commit()
+        except Exception as e:
+            db.rollback()
+            print(f"Error soft deleting product {product_id}: {e}") # Log error
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Error interno al eliminar lógicamente el producto."
+            )
+    else:
+        # Si ya estaba inactivo, no hacer nada y devolver éxito (204)
+        # Opcionalmente podrías devolver un 304 Not Modified, pero 204 es simple.
+        pass
+
+    # Devolver 204 No Content indica éxito sin cuerpo de respuesta
+    return None # Necesario para que FastAPI devuelva 204 correctamente
