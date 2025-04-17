@@ -1,14 +1,14 @@
 # viandas/backend/routes/sales.py
 # (COMPLETO Y CORREGIDO con validación is_active)
 
-from fastapi import APIRouter, Depends, HTTPException, Body, status
+from fastapi import APIRouter, Depends, HTTPException, Body, status, Query 
 from sqlalchemy.orm import Session, joinedload, selectinload
 # Asegúrate que los imports sean correctos para tu estructura
 from models.models import Sale, User, LineOfSale, Product
 from schemas.schemas import SaleWithLines, LineOfSaleCreate, SaleAdminView, User as UserSchema # Renombrar UserSchema si choca
 from api.deps import get_db, get_current_user
 from datetime import date, datetime
-from typing import List
+from typing import List, Optional 
 import pytz # Para zona horaria
 from sqlalchemy.exc import SQLAlchemyError # Para manejo de errores DB
 
@@ -239,16 +239,31 @@ def get_pedidos_pendientes_retiro(
 @router.get("/ventas", response_model=List[SaleAdminView])
 def get_ventas_finalizadas(
     db: Session = Depends(get_db),
-    admin_user: UserSchema = Depends(require_admin) # Requiere admin
+    admin_user: UserSchema = Depends(require_admin), # Requiere admin
+    # --- AÑADIR ESTE PARÁMETRO ---
+    sale_date: Optional[date] = Query(None, description="Filtrar ventas por una fecha específica (YYYY-MM-DD)")
+    # -----------------------------
 ):
-    """Obtiene ventas ya registradas en caja (admin)."""
+    """Obtiene ventas ya registradas en caja (admin), opcionalmente filtradas por fecha."""
     try:
-        sales = db.query(Sale).options(
+        # Iniciar la query base
+        query = db.query(Sale).options(
             selectinload(Sale.user),
             selectinload(Sale.line_of_sales).selectinload(LineOfSale.product)
         ).filter(
-            Sale.sale_in_register == True
-        ).order_by(Sale.date.desc(), Sale.id.desc()).all()
+            Sale.sale_in_register == True # Mantener el filtro original
+        )
+
+        # --- AÑADIR ESTE FILTRO CONDICIONAL ---
+        if sale_date:
+            # Filtrar por la fecha exacta proporcionada
+            # Asumiendo que Sale.date es de tipo Date en el modelo
+            query = query.filter(Sale.date == sale_date)
+        # ------------------------------------
+
+        # Aplicar ordenamiento y ejecutar la query
+        sales = query.order_by(Sale.date.desc(), Sale.id.desc()).all()
+
     except Exception as e:
         print(f"Error fetching ventas finalizadas: {e}")
         raise HTTPException(status_code=500, detail="Error interno al obtener las ventas finalizadas.")

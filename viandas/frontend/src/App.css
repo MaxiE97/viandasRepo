@@ -361,3 +361,194 @@ button.delete:hover, .button-danger:hover { background-color: var(--color-danger
 .ready-orders-list li strong {
   color: var(--color-primary-dark);
 }
+
+
+/* Añadir a App.css o crear AdminSales.css e importarlo en AdminSales.jsx */
+
+.admin-sales-page {
+  padding: 20px;
+  max-width: 1200px;
+  margin: 20px auto;
+}
+
+.admin-sales-page h1 {
+  text-align: center;
+  margin-bottom: 30px;
+}
+
+.sales-section {
+  margin-bottom: 40px;
+  padding: 20px;
+  background-color: #f8f9fa;
+  border-radius: 8px;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+}
+
+.sales-section h2 {
+  margin-top: 0;
+  margin-bottom: 15px;
+  border-bottom: 1px solid #dee2e6;
+  padding-bottom: 10px;
+}
+
+/* Estilo para el selector de fecha */
+.date-selector-inline {
+  margin-bottom: 15px;
+  padding: 10px;
+  background-color: #e9ecef;
+  border-radius: 4px;
+  display: flex;
+  align-items: center;
+  gap: 15px; /* Espacio entre label e input */
+  flex-wrap: wrap; /* Para que se ajuste en pantallas pequeñas */
+}
+
+.date-selector-inline label {
+  font-weight: bold;
+  margin-bottom: 0; /* Resetear margen si viene de otro estilo */
+}
+
+.date-selector-inline input[type="date"] {
+  padding: 8px 10px;
+  border: 1px solid #ced4da;
+  border-radius: 4px;
+  font-size: 1rem;
+}
+
+/* Estilos para la tabla (básicos, puedes mejorarlos) */
+.admin-table {
+  width: 100%;
+  border-collapse: collapse;
+  margin-top: 15px;
+  font-size: 0.9rem;
+}
+
+.admin-table th,
+.admin-table td {
+  border: 1px solid #dee2e6;
+  padding: 8px 12px;
+  text-align: left;
+  vertical-align: middle; /* Alinear contenido verticalmente */
+}
+
+.admin-table thead th {
+  background-color: #e9ecef;
+  font-weight: 600; /* Un poco más grueso */
+  white-space: nowrap; /* Evitar que los títulos largos se rompan */
+}
+
+.admin-table tbody tr:nth-child(even) {
+  background-color: #f8f9fa; /* Suave alternancia de color */
+}
+
+.admin-table td[data-label="Acciones"] {
+    white-space: nowrap; /* Evitar que los botones se envuelvan */
+}
+
+.admin-table .actions button {
+  margin-right: 5px;
+  margin-bottom: 5px; /* Espacio si se apilan verticalmente en móvil */
+}
+
+/* Botones pequeños de acción */
+.action-button-small {
+  padding: 4px 8px;
+  font-size: 0.8em;
+  border-radius: 4px;
+  border: none;
+  cursor: pointer;
+  color: white;
+  transition: background-color 0.2s ease;
+}
+
+.action-button-small.confirm { background-color: #17a2b8; } /* Cian info */
+.action-button-small.confirm:hover { background-color: #138496; }
+
+.action-button-small.register { background-color: #28a745; } /* Verde éxito */
+.action-button-small.register:hover { background-color: #218838; }
+
+.action-button-small.paid-toggle { background-color: #ffc107; color: #212529; } /* Amarillo advertencia */
+.action-button-small.paid-toggle:hover { background-color: #e0a800; }
+
+/* Mensajes de estado */
+.loading-inline {
+  display: inline-block; /* Para que no ocupe toda la línea */
+  margin-left: 15px;
+  font-style: italic;
+  color: #6c757d; /* Gris */
+}
+
+.error-message {
+  color: #dc3545; /* Rojo peligro */
+  background-color: #f8d7da;
+  border: 1px solid #f5c6cb;
+  padding: 10px 15px;
+  border-radius: 4px;
+  margin-top: 10px;
+  margin-bottom: 15px;
+}
+
+/* Estilos básicos para Venta Manual y Modal (ajusta según necesidad) */
+.manual-sale-section {
+    text-align: center; /* Centrar botón */
+}
+
+.manual-sale-button {
+    padding: 10px 20px;
+    font-size: 1rem;
+    cursor: pointer;
+}
+/* Asegúrate de tener estilos para Modal y CajaSaleForm */
+
+
+/* --- Responsive (ejemplo básico) --- */
+@media (max-width: 768px) {
+  .admin-table thead {
+    display: none; /* Ocultar encabezados en móvil */
+  }
+  .admin-table, .admin-table tbody, .admin-table tr, .admin-table td {
+    display: block; /* Convertir tabla en bloques */
+    width: 100%;
+  }
+  .admin-table tr {
+    margin-bottom: 15px;
+    border: 1px solid #dee2e6;
+    border-radius: 4px;
+  }
+  .admin-table td {
+    text-align: right; /* Alinear contenido a la derecha */
+    padding-left: 50%; /* Espacio para la etiqueta */
+    position: relative;
+    border: none; /* Quitar bordes internos */
+    border-bottom: 1px solid #eee; /* Separador ligero */
+  }
+   .admin-table td:last-child {
+      border-bottom: none;
+   }
+  .admin-table td::before {
+    content: attr(data-label); /* Usar data-label como pseudo-elemento */
+    position: absolute;
+    left: 10px;
+    width: calc(50% - 20px); /* Ancho de la etiqueta */
+    padding-right: 10px;
+    font-weight: bold;
+    text-align: left;
+    white-space: nowrap;
+  }
+   .admin-table td[data-label="Acciones"] {
+      text-align: left; /* Alinear botones a la izquierda en móvil */
+      padding-left: 10px;
+   }
+   .admin-table td[data-label="Acciones"]::before {
+       display: none; /* Ocultar etiqueta de Acciones */
+   }
+
+   .date-selector-inline {
+       flex-direction: column; /* Apilar label e input */
+       align-items: flex-start; /* Alinear a la izquierda */
+   }
+    .date-selector-inline input[type="date"] {
+        width: 100%; /* Ocupar ancho completo */
+        box-sizing: border-box; /* Incluir padding en el ancho */
+    }
+}

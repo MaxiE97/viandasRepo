@@ -1,5 +1,5 @@
-// src/api/saleService.js
-// (COMPLETO Y CORREGIDO)
+// viandasRepo-main/viandas/frontend/src/api/saleService.js
+// (COMPLETO Y CORREGIDO con filtro de fecha)
 import API from "./axios"; // Tu instancia configurada de Axios
 
 const SALE_API_URL = '/sales'; // Prefijo base para las rutas de ventas
@@ -19,7 +19,7 @@ export const createOnlineSale = async (saleData) => {
     // Mejorar el mensaje de error para el usuario
     const detail = error.response?.data?.detail;
     if (typeof detail === 'string' && detail.includes("Stock insuficiente")) {
-       throw new Error(detail); // Propagar mensaje específico de stock
+        throw new Error(detail); // Propagar mensaje específico de stock
     }
     throw error.response?.data || new Error("Error al crear el pedido online. Verifica los productos y cantidades.");
   }
@@ -67,19 +67,29 @@ export const getPedidosPendientesRetiro = async () => {
   }
 };
 
+
+// --- MODIFICADA PARA ACEPTAR FECHA ---
 /**
- * [ADMIN] Obtiene las ventas finalizadas (registradas o confirmadas según backend).
+ * [ADMIN] Obtiene las ventas finalizadas (registradas), opcionalmente filtradas por fecha.
+ * @param {string|null} date - Fecha en formato YYYY-MM-DD para filtrar, o null para todas.
  * @returns {Promise<Array>} - Lista de ventas finalizadas.
  */
-export const getVentasFinalizadas = async () => {
+export const getVentasFinalizadas = async (date = null) => { // <-- Añadir parámetro date
   try {
-    const response = await API.get(`${SALE_API_URL}/ventas`);
+    // Crear objeto de parámetros para la query
+    const params = {};
+    if (date) {
+      params.sale_date = date; // <-- Añadir sale_date si se proporciona date
+    }
+    // Pasar params a la llamada GET
+    const response = await API.get(`${SALE_API_URL}/ventas`, { params }); // <-- Añadir { params }
     return response.data;
   } catch (error) {
     console.error("Error fetching ventas finalizadas:", error.response?.data || error.message);
     throw error.response?.data || new Error("Error al obtener ventas finalizadas");
   }
 };
+// --- FIN MODIFICACIÓN ---
 
 /**
  * [ADMIN] Confirma un pedido online.
@@ -122,11 +132,11 @@ export const registerSaleInCaja = async (saleId) => {
     return response.data;
   } catch (error) {
     console.error(`Error registering sale ${saleId} in caja:`, error.response?.data || error.message);
-     // Propagar mensaje de error específico si es de stock
-     const detail = error.response?.data?.detail;
-     if (typeof detail === 'string' && detail.includes("Stock insuficiente")) {
-        throw new Error(detail);
-     }
+      // Propagar mensaje de error específico si es de stock
+      const detail = error.response?.data?.detail;
+      if (typeof detail === 'string' && detail.includes("Stock insuficiente")) {
+          throw new Error(detail);
+      }
     throw error.response?.data || new Error("Error al registrar venta en caja");
   }
 };
@@ -145,10 +155,10 @@ export const createCajaSale = async (saleData) => {
   } catch (error) {
     console.error("Error creating caja sale:", error.response?.data || error.message);
     // Propagar mensaje de error específico si es de stock
-     const detail = error.response?.data?.detail;
-     if (typeof detail === 'string' && detail.includes("Stock insuficiente")) {
-        throw new Error(detail);
-     }
+      const detail = error.response?.data?.detail;
+      if (typeof detail === 'string' && detail.includes("Stock insuficiente")) {
+          throw new Error(detail);
+      }
     throw error.response?.data || new Error("Error al crear venta en caja");
   }
 };
@@ -166,3 +176,5 @@ export const getMyReadyOrders = async () => {
     throw error.response?.data || new Error("Error al obtener los pedidos listos para retirar");
   }
 };
+
+// Si necesitas añadir más funciones (ej: marcar como no pagado, eliminar venta) puedes hacerlo aquí.
