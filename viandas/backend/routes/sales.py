@@ -2,10 +2,11 @@
 # (COMPLETO Y CORREGIDO con validación is_active)
 
 from fastapi import APIRouter, Depends, HTTPException, Body, status, Query 
+from sqlalchemy import and_, func
 from sqlalchemy.orm import Session, joinedload, selectinload
 # Asegúrate que los imports sean correctos para tu estructura
 from models.models import Sale, User, LineOfSale, Product
-from schemas.schemas import SaleWithLines, LineOfSaleCreate, SaleAdminView, User as UserSchema # Renombrar UserSchema si choca
+from schemas.schemas import SaleWithLines, LineOfSaleCreate, SaleAdminView, User as UserSchema, HistoricalSummaryResponse, ProductPerformanceSummary
 from api.deps import get_db, get_current_user
 from datetime import date, datetime
 from typing import List, Optional 
@@ -515,3 +516,59 @@ def get_my_ready_orders(
         raise HTTPException(status_code=500, detail="Error interno al obtener los pedidos listos para retirar.")
 
     return ready_sales
+
+
+@router.get("/summary/historical-product-performance", response_model=HistoricalSummaryResponse)
+def get_historical_product_summary(
+    db: Session = Depends(get_db),
+    admin_user: UserSchema = Depends(require_admin)
+):
+    """
+    Calcula y devuelve un resumen histórico del rendimiento de cada producto,
+    basado en las ventas registradas (sale_in_register=True).
+    Incluye unidades totales vendidas e ingresos totales generados por producto,
+    así como el ingreso total histórico general.
+    """
+    try:
+        # Subconsulta para obtener solo las líneas de ventas que pertenecen a ventas registradas
+        subquery = db.query(LineOfSale.id)\
+            .join(Sale, LineOfSale.sale_id == Sale.id)\
+            .filter(Sale.sale_in_register == True)\
+            .subquery()
+
+        # Consulta principal para calcular el rendimiento de todos los productos (activos e inactivos)
+        product_summary_query_registered = db.query(
+            Product.nombre.label("product_name"),
+            func.coalesce(func.sum(LineOfSale.cantidad), 0).label("total_units_sold"),
+            func.coalesce(func.sum(LineOfSale.cantidad * LineOfSale.precio), 0.0).label("total_revenue")
+        ).select_from(Product)\
+        .outerjoin(LineOfSale, and_(Product.id == LineOfSale.product_id, LineOfSale.id.in_(subquery)))\
+        .group_by(Product.id, Product.nombre)\
+        .order_by(Product.nombre)
+
+        product_performance_registered = product_summary_query_registered.all()
+
+        # Calcular el ingreso total general
+        overall_total_revenue = sum(item.total_revenue for item in product_performance_registered if item.total_revenue is not None)
+
+        # Armar la lista de resumen por producto
+        products_summary_list = [
+            ProductPerformanceSummary(
+                product_name=item.product_name,
+                total_units_sold=item.total_units_sold,
+                total_revenue=item.total_revenue
+            ) for item in product_performance_registered
+        ]
+
+        return HistoricalSummaryResponse(
+            products=products_summary_list,
+            overall_total_revenue=overall_total_revenue
+        )
+
+    except SQLAlchemyError as e:
+        db.rollback()
+        print(f"Error de base de datos al calcular el resumen histórico: {e}")
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Error interno al calcular el resumen de ventas.")
+    except Exception as e:
+        print(f"Error inesperado al calcular el resumen histórico: {e}")
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Error inesperado al procesar la solicitud de resumen.")

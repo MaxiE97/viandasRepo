@@ -552,3 +552,113 @@ button.delete:hover, .button-danger:hover { background-color: var(--color-danger
         box-sizing: border-box; /* Incluir padding en el ancho */
     }
 }
+
+.historical-summary-section {
+  margin-top: 40px; /* Espacio arriba */
+  padding: 25px;
+  background-color: #fdfdfe; /* Un fondo ligeramente diferente */
+  border: 1px solid var(--color-border);
+  border-radius: var(--border-radius);
+  box-shadow: var(--box-shadow-light);
+}
+
+.historical-summary-section h2 {
+  margin-top: 0;
+  margin-bottom: 20px; /* Más espacio bajo el título */
+  font-size: 1.4rem; /* Tamaño de título acorde */
+  color: var(--color-secondary-dark);
+  border-bottom: 1px solid var(--color-border);
+  padding-bottom: 10px;
+}
+
+.product-summary-list {
+  list-style: none; /* Sin viñetas */
+  padding-left: 0; /* Sin indentación */
+  margin-bottom: 20px; /* Espacio antes del total */
+}
+
+.product-summary-item {
+  padding: 8px 0; /* Espacio vertical entre ítems */
+  border-bottom: 1px dotted #e0e0e0; /* Separador sutil */
+  font-size: 0.95rem;
+  color: var(--color-text);
+}
+
+.product-summary-item:last-child {
+  border-bottom: none; /* Sin línea en el último */
+}
+
+.product-summary-item strong {
+  color: var(--color-dark); /* Nombre del producto un poco más oscuro */
+  margin-right: 5px;
+}
+
+.overall-total {
+  margin-top: 20px; /* Espacio sobre el total */
+  padding-top: 15px;
+  border-top: 1px solid var(--color-border);
+  font-size: 1.1rem; /* Ligeramente más grande */
+  font-weight: bold; /* Texto en negrita */
+  color: var(--color-primary-dark); /* Color primario oscuro */
+  text-align: right; /* Alinear a la derecha */
+}
+
+/* Ajuste para mensajes de error/carga dentro del resumen */
+.historical-summary-section .error-message {
+    margin-top: 0; /* Quitar margen superior si es el primer elemento */
+}
+.historical-summary-section p { /* Estilo base para párrafos dentro del resumen */
+    font-size: 0.95rem;
+    color: var(--color-text-light);
+}
+
+.admin-actions-container {
+  display: flex; /* Usa flexbox para alinear elementos */
+  justify-content: space-around; /* Distribuye espacio alrededor */
+  align-items: flex-start; /* Alinea arriba si tienen diferente altura */
+  flex-wrap: wrap; /* Permite que pasen a la línea siguiente en pantallas pequeñas */
+  gap: 20px; /* Espacio entre las secciones de botones */
+  margin-top: 30px;
+  padding-top: 20px;
+  border-top: 1px solid var(--color-border);
+}
+
+.manual-sale-section,
+.summary-action-section {
+  text-align: center; /* Centra el contenido de cada sección */
+  flex-basis: 300px; /* Base para el ancho, ajustable */
+  flex-grow: 1; /* Permite que crezcan para llenar espacio */
+}
+
+.manual-sale-section h2,
+.summary-action-section h2 {
+  font-size: 1.3rem; /* Tamaño de título consistente */
+  margin-bottom: 15px;
+  border-bottom: none; /* Quitar borde si lo tenían */
+}
+
+.manual-sale-button, /* Estilo base que ya tenías */
+.summary-button {   /* Nuevo botón */
+    padding: 10px 20px;
+    font-size: 1rem;
+    cursor: pointer;
+    width: auto; /* Ancho automático o ajusta según necesidad */
+    min-width: 200px; /* Ancho mínimo para que no queden muy chicos */
+}
+
+/* Estilo específico para el botón de resumen (ej: secundario) */
+.summary-button {
+    background-color: var(--color-secondary);
+    border-color: var(--color-secondary);
+    color: white;
+}
+.summary-button:hover {
+    background-color: var(--color-secondary-dark);
+    border-color: var(--color-secondary-dark);
+}
+.summary-button:disabled {
+     background-color: var(--color-secondary);
+     border-color: var(--color-secondary);
+     opacity: 0.65;
+     cursor: not-allowed;
+}

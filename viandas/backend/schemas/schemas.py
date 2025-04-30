@@ -132,3 +132,20 @@ class SaleAdminView(BaseModel):
 
     class Config:
         from_attributes = True
+
+
+# --- NUEVOS SCHEMAS PARA EL RESUMEN HISTÓRICO ---
+
+class ProductPerformanceSummary(BaseModel):
+    """Schema para el resumen de rendimiento de un solo producto."""
+    product_name: str
+    total_units_sold: int
+    total_revenue: float
+
+    class Config:
+        from_attributes = True # Necesario si los datos vienen de un ORM con esos nombres
+
+class HistoricalSummaryResponse(BaseModel):
+    """Schema para la respuesta completa del resumen histórico."""
+    products: List[ProductPerformanceSummary]
+    overall_total_revenue: float

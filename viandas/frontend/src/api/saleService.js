@@ -178,3 +178,19 @@ export const getMyReadyOrders = async () => {
 };
 
 // Si necesitas añadir más funciones (ej: marcar como no pagado, eliminar venta) puedes hacerlo aquí.
+
+/**
+ * [ADMIN] Obtiene el resumen histórico de rendimiento por producto activo.
+ * @returns {Promise<object>} - Objeto con { products: [], overall_total_revenue: number }
+ */
+export const getHistoricalSummary = async () => {
+  try {
+    const response = await API.get(`${SALE_API_URL}/summary/historical-product-performance`);
+    // Devuelve la estructura completa { products: [...], overall_total_revenue: ... }
+    return response.data;
+  } catch (error) {
+    console.error("Error fetching historical summary:", error.response?.data || error.message);
+    // Propaga un error genérico o el específico del backend si existe
+    throw error.response?.data || new Error("Error al obtener el resumen histórico de ventas.");
+  }
+};
