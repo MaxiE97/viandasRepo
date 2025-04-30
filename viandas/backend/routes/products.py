@@ -1,5 +1,4 @@
 # viandas/backend/routes/products.py
-# (COMPLETO Y CORREGIDO para Soft Delete)
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
