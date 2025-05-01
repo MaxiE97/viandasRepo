@@ -162,10 +162,34 @@ const AdminSales = () => {
         }
     };
 
+    // --- MODIFICACIÓN EN handleRegister ---
+    const handleRegister = (saleId) => {
+        // 1. Buscar la venta en el estado 'pendientesRetiro'
+        const saleToRegister = pendientesRetiro.find(sale => sale.id === saleId);
+
+        // 2. Verificar si se encontró la venta y si está pagada
+        if (!saleToRegister) {
+            console.error("Error: No se encontró la venta con ID:", saleId);
+            setError("Error interno: No se pudo encontrar la venta para registrar.");
+            return; // Salir si no se encuentra
+        }
+
+        if (!saleToRegister.pagado) {
+            // 3. Si no está pagada, mostrar alerta y no continuar
+            window.alert(`El pedido #${saleId} debe estar marcado como "Pagado" antes de poder registrar el retiro.`);
+            return; // Detener la ejecución
+        }
+
+        // 4. Si está pagada, proceder con la acción original
+        handleAction(
+            registerSaleInCaja(saleId),
+            `Pedido ${saleId} registrado en caja (retirado).`
+        );
+    };
+
     // Handlers específicos (sin cambios)
     const handleConfirm = (saleId) => { handleAction(confirmSale(saleId), `Pedido ${saleId} confirmado.`); };
     const handleMarkPaid = (saleId) => { handleAction(markAsPaid(saleId), `Pedido ${saleId} marcado como pagado.`); };
-    const handleRegister = (saleId) => { handleAction(registerSaleInCaja(saleId), `Pedido ${saleId} registrado en caja (retirado).`); };
     // handleCajaSaleCreated ahora solo necesita refrescar las tablas
     const handleCajaSaleCreated = () => {
         console.log("Venta en caja creada.");
@@ -182,22 +206,62 @@ const AdminSales = () => {
     return (
         <div className="admin-sales-page">
             <h1>Gestión de Pedidos y Ventas</h1>
+            {/* Indicador de carga para acciones */}
             {actionLoading && <p className="loading-inline">Procesando acción...</p>}
-            {error && !actionLoading && <p className="error-message">{`Error en tablas: ${error}`}</p>}
+            {/* Mostrar error general solo si no hay acción en curso */}
+            {error && !actionLoading && <p className="error-message">{`Error: ${error}`}</p>}
 
+            {/* Indicador de carga principal */}
             {loading ? (
                 <p>Cargando pedidos y ventas...</p>
             ) : (
                 <>
-                    {/* Tablas de Pedidos y Ventas Finalizadas */}
-                    <SalesTable title="Pedidos Solicitados (Online)" sales={pedidosSolicitados} actions={{ canConfirm: true, canTogglePaid: true, onConfirm: handleConfirm, onMarkPaid: handleMarkPaid }} />
-                    <SalesTable title="Pedidos Pendientes de Retiro" sales={pendientesRetiro} actions={{ canRegister: true, canTogglePaid: true, onRegister: handleRegister, onMarkPaid: handleMarkPaid }} />
+                    {/* Tabla Pedidos Solicitados (Online) */}
+                    <SalesTable
+                        title="Pedidos Solicitados (Online)"
+                        sales={pedidosSolicitados}
+                        actions={{
+                            canConfirm: true,        // Se pueden confirmar
+                            canTogglePaid: true,     // Se pueden marcar como pagado
+                            onConfirm: handleConfirm,
+                            onMarkPaid: handleMarkPaid,
+                            canRegister: false       // No se registra retiro desde aquí
+                        }}
+                    />
+
+                    {/* Tabla Pedidos Pendientes de Retiro */}
+                    <SalesTable
+                        title="Pedidos Pendientes de Retiro"
+                        sales={pendientesRetiro}
+                        actions={{
+                            canConfirm: false,       // Ya no se confirman
+                            canTogglePaid: true,     // Se pueden marcar como pagado
+                            canRegister: true,       // Se puede registrar retiro
+                            onRegister: handleRegister, // <--- Pasa la función modificada
+                            onMarkPaid: handleMarkPaid
+                        }}
+                    />
+
+                    {/* Sección Ventas Finalizadas (Registradas en Caja) */}
                     <div className="sales-section">
                         <div className="date-selector-inline">
                             <label htmlFor="sales-date">Filtrar Ventas Finalizadas por Fecha:</label>
-                            <input type="date" id="sales-date" value={selectedDate} onChange={handleDateChange} disabled={actionLoading || loading} />
+                            <input
+                                type="date"
+                                id="sales-date"
+                                value={selectedDate}
+                                onChange={handleDateChange}
+                                disabled={actionLoading || loading}
+                            />
                         </div>
-                        <SalesTable title={`Ventas Finalizadas (Filtrado: ${selectedDate === formatDateToYYYYMMDD(new Date()) ? 'Hoy' : selectedDate})`} sales={ventasFinalizadas} actions={{ canTogglePaid: false }} />
+                        <SalesTable
+                            title={`Ventas Finalizadas (Filtrado: ${selectedDate === formatDateToYYYYMMDD(new Date()) ? 'Hoy' : selectedDate})`}
+                            sales={ventasFinalizadas}
+                            actions={{
+                                canTogglePaid: false // No se puede cambiar estado pagado en ventas ya finalizadas
+                                // No hay más acciones aquí (confirmar/registrar ya ocurrieron)
+                            }}
+                        />
                     </div>
                 </>
             )}
@@ -206,26 +270,36 @@ const AdminSales = () => {
             <div className="admin-actions-container">
                 <div className="manual-sale-section">
                     <h2>Venta Manual en Caja</h2>
-                    <button onClick={() => setIsCajaModalOpen(true)} className="manual-sale-button button-info" disabled={actionLoading || loading}> Registrar Venta Manual </button>
+                    <button
+                        onClick={() => setIsCajaModalOpen(true)}
+                        className="manual-sale-button button-info"
+                        disabled={actionLoading || loading}>
+                        Registrar Venta Manual
+                    </button>
                 </div>
                 <div className="summary-action-section">
-                     <h2>Resumen General</h2>
+                    <h2>Resumen General</h2>
                     {/* Botón para mostrar el resumen */}
-                    <button onClick={handleShowSummaryClick} className="summary-button button-secondary" disabled={summaryLoading || actionLoading || loading}>
+                    <button
+                        onClick={handleShowSummaryClick}
+                        className="summary-button button-secondary"
+                        disabled={summaryLoading || actionLoading || loading}>
                         {summaryLoading ? 'Cargando Resumen...' : 'Mostrar Resumen Histórico'}
                     </button>
                 </div>
             </div>
-             {/* ----------------------------------- */}
+            {/* ----------------------------------- */}
 
 
-            {/* Modal Venta Manual (sin cambios) */}
+            {/* Modal para Venta Manual en Caja */}
             <Modal isOpen={isCajaModalOpen} onClose={() => setIsCajaModalOpen(false)}>
-                <CajaSaleForm onClose={() => setIsCajaModalOpen(false)} onSaleCreated={handleCajaSaleCreated} />
+                <CajaSaleForm
+                    onClose={() => setIsCajaModalOpen(false)}
+                    onSaleCreated={handleCajaSaleCreated}
+                />
             </Modal>
 
             {/* --- SECCIÓN RESUMEN HISTÓRICO (CONDICIONAL) --- */}
-            {/* Solo se muestra si se hizo clic en el botón (showSummary=true) */}
             {showSummary && (
                 <div className="historical-summary-section">
                     <h2>Resumen Histórico (Ventas Registradas)</h2>
@@ -244,14 +318,13 @@ const AdminSales = () => {
                                     ))}
                                 </ul>
                             ) : (
-                                <p>No hay datos de ventas registradas.</p> // Mensaje si no hay productos en el resumen
+                                <p>No hay datos de ventas registradas para mostrar.</p>
                             )}
                             <p className="overall-total">
                                 <strong>Ingresos Totales Históricos (Ventas Registradas): {formatCurrency(historicalSummary.overall_total_revenue)}</strong>
                             </p>
                         </>
                     ) : (
-                         // Si no está cargando, no hay error, pero tampoco datos (después de intentar cargar)
                         <p>No se pudo obtener el resumen.</p>
                     )}
                 </div>

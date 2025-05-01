@@ -99,7 +99,7 @@ const Admin = () => {
         />
       ) : (
         <div className="product-admin-list">
-          <h2>Gestión de Productos</h2>
+  
           {products.length === 0 && !loading && <p>No hay productos cargados.</p>}
           {products.length > 0 && (
              <table className="admin-table">

@@ -22,7 +22,7 @@ const Navbar = () => {
     <nav className="navbar">
       <div className="navbar-brand">
         {/* Usa NavLink aquí también si quieres que sea "activo" */}
-        <NavLink to={isAdmin() ? "/admin" : "/products"}>Sistema de Viandas</NavLink>
+        <NavLink to={isAdmin() ? "/admin" : "/products"}>Viandas Sofía</NavLink>
       </div>
 
       <ul className="navbar-nav">
@@ -46,11 +46,11 @@ const Navbar = () => {
           <>
             <li className="nav-item admin">
                {/* Usa NavLink */}
-              <NavLink to="/admin">Admin Productos</NavLink>
+              <NavLink to="/admin">Productos</NavLink>
             </li>
             <li className="nav-item admin">
                {/* Usa NavLink */}
-              <NavLink to="/admin/sales">Admin Ventas</NavLink>
+              <NavLink to="/admin/sales">Ventas</NavLink>
             </li>
              {/* Puedes añadir aquí links a "Usuarios", "Reportes", etc. para admin */}
           </>

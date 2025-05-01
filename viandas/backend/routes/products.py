@@ -1,12 +1,21 @@
 # viandas/backend/routes/products.py
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status,  UploadFile, File
 from sqlalchemy.orm import Session
-# Ajusta los imports según tu estructura de proyecto
 from models import models
 from schemas import schemas
-from api.deps import get_db, get_current_user
+from api.deps import get_db, get_current_user 
 from typing import List
+from pathlib import Path
+from uuid import uuid4
+import shutil
+import os
+
+
+
+
+
+
 
 router = APIRouter()
 
@@ -196,3 +205,49 @@ def delete_product(
 
     # Devolver 204 No Content indica éxito sin cuerpo de respuesta
     return None # Necesario para que FastAPI devuelva 204 correctamente
+
+
+
+STATIC_DIR = Path("static")
+PRODUCT_IMAGE_DIR = STATIC_DIR / "product_images"
+PRODUCT_IMAGE_DIR.mkdir(parents=True, exist_ok=True) # Crear si no existe
+
+# --- Endpoint Faltante ---
+@router.post("/upload-image/", response_model=dict) # Define la ruta CON barra final
+async def upload_product_image(
+    file: UploadFile = File(...), # Recibe el archivo
+    admin_user: models.User = Depends(require_admin) # Asegura que sea admin
+):
+    """
+    Handles uploading a product image. Returns the saved filename.
+    """
+    # Validación básica del tipo de archivo (opcional pero recomendado)
+    if not file.content_type.startswith("image/"):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Tipo de archivo no válido. Solo se permiten imágenes."
+        )
+
+    # Generar un nombre de archivo único para evitar colisiones
+    file_extension = Path(file.filename).suffix
+    # Usar UUID para asegurar unicidad incluso si se suben archivos con el mismo nombre original
+    unique_filename = f"{uuid4()}{file_extension}"
+    file_path = PRODUCT_IMAGE_DIR / unique_filename
+
+    try:
+        # Guardar el archivo en el servidor de forma asíncrona
+        with file_path.open("wb") as buffer:
+            shutil.copyfileobj(file.file, buffer)
+    except Exception as e:
+        print(f"Error saving image: {e}") # Log del error
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="No se pudo guardar la imagen en el servidor."
+        )
+    finally:
+        # Cerrar el archivo subido explícitamente
+        await file.close()
+
+    # Devolver solo el nombre del archivo guardado
+    return {"filename": unique_filename}
+# -----------------------

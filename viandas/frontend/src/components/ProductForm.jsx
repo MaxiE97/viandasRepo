@@ -11,19 +11,18 @@ const ProductForm = ({ product = null, onSave, onCancel }) => {
     mostrarEnSistema: true,
     stock: '',
     stockMinimo: '',
-    // foto: '' // Ya no almacenamos la URL/filename aquí directamente
   });
-  // Nuevo estado para el archivo de imagen seleccionado
   const [selectedFile, setSelectedFile] = useState(null);
-  // Estado para la URL/filename existente (si estamos editando)
   const [existingFoto, setExistingFoto] = useState('');
-
   const [error, setError] = useState(null);
   const [loading, setLoading] = useState(false);
-  const [uploading, setUploading] = useState(false); // Estado para la subida
+  const [uploading, setUploading] = useState(false);
+
+  // --- NUEVO: Determinar si estamos creando o editando ---
+  const isEditing = product && product.id;
 
   useEffect(() => {
-    if (product) {
+    if (isEditing) {
       setFormData({
         nombre: product.nombre,
         precioActual: product.precioActual,
@@ -32,17 +31,18 @@ const ProductForm = ({ product = null, onSave, onCancel }) => {
         stock: product.stock,
         stockMinimo: product.stockMinimo,
       });
-      setExistingFoto(product.foto || ''); // Guardar foto existente
-      setSelectedFile(null); // Resetear archivo seleccionado al cargar producto
+      setExistingFoto(product.foto || '');
+      setSelectedFile(null);
     } else {
-        // Resetear todo si es un producto nuevo
-         setFormData({
+        setFormData({
             nombre: '', precioActual: '', detalle: '', mostrarEnSistema: true, stock: '', stockMinimo: ''
          });
          setExistingFoto('');
          setSelectedFile(null);
     }
-  }, [product]); // <- Dependencia clave
+    // Limpiar errores al cambiar de modo
+    setError(null);
+  }, [product, isEditing]); // <- Dependencia clave
 
   const handleChange = (e) => {
     const { name, value, type, checked } = e.target;
@@ -52,11 +52,10 @@ const ProductForm = ({ product = null, onSave, onCancel }) => {
     });
   };
 
-  // Nuevo manejador para el input de archivo
   const handleFileChange = (e) => {
     if (e.target.files && e.target.files[0]) {
       setSelectedFile(e.target.files[0]);
-      setError(null); // Limpiar error si selecciona un archivo
+      setError(null);
     } else {
         setSelectedFile(null);
     }
@@ -64,44 +63,47 @@ const ProductForm = ({ product = null, onSave, onCancel }) => {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    setLoading(true); // Loading general
-    setUploading(false); // Resetear uploading
-    setError(null);
+    setLoading(true);
+    setUploading(false);
+    setError(null); // Limpiar errores previos
 
     try {
-      // Validación básica
+      // Validación básica de campos de texto/número (igual que antes)
       if (!formData.nombre || !formData.precioActual || !formData.stock || !formData.stockMinimo) {
         throw new Error('Por favor completa todos los campos obligatorios (*)');
       }
 
-      let fotoFilename = existingFoto; // Empezar con la foto existente
+      // --- NUEVA VALIDACIÓN DE IMAGEN ---
+      const imageRequired = !isEditing || (isEditing && !existingFoto);
+      if (imageRequired && !selectedFile) {
+          // Mensaje específico según el caso
+          const errorMessage = !isEditing 
+              ? 'Se requiere una imagen para crear un producto nuevo.'
+              : 'Se requiere una imagen para este producto ya que no tiene una asignada.';
+          throw new Error(errorMessage); 
+      }
+      // --- FIN VALIDACIÓN DE IMAGEN ---
+
+
+      let fotoFilename = existingFoto;
 
       // 1. Si se seleccionó un nuevo archivo, subirlo PRIMERO
       if (selectedFile) {
-        setUploading(true); // Indicar que estamos subiendo
+        setUploading(true);
         const imageFormData = new FormData();
         imageFormData.append('file', selectedFile);
 
         try {
-            // Hacer la llamada al nuevo endpoint de subida
             const uploadResponse = await API.post('/products/upload-image/', imageFormData, {
-                headers: {
-                    'Content-Type': 'multipart/form-data' // Importante para archivos
-                }
+                headers: { 'Content-Type': 'multipart/form-data' }
             });
-            // Obtener el nombre de archivo guardado
-            fotoFilename = uploadResponse.data.filename; 
-            // Opcional: Si actualizamos, borrar la foto vieja del estado local
-            // setExistingFoto(''); 
+            fotoFilename = uploadResponse.data.filename;
         } catch (uploadError) {
              console.error("Error subiendo imagen:", uploadError.response?.data || uploadError.message);
-             // Mostrar error específico de la subida
-             setError(`Error al subir la imagen: ${uploadError.response?.data?.detail || uploadError.message}`);
-             setLoading(false); // Detener el loading general
-             setUploading(false);
-             return; // Detener el proceso si falla la subida
+             // Usar throw para que lo capture el catch general
+             throw new Error(`Error al subir la imagen: ${uploadError.response?.data?.detail || uploadError.message}`);
         } finally {
-            setUploading(false); // Terminar estado de subida
+            setUploading(false);
         }
       }
 
@@ -111,16 +113,15 @@ const ProductForm = ({ product = null, onSave, onCancel }) => {
         precioActual: parseFloat(formData.precioActual),
         stock: parseInt(formData.stock),
         stockMinimo: parseInt(formData.stockMinimo),
-        foto: fotoFilename || null // Enviar null si no hay foto
+        // Asegurar que se envíe null si no hay foto, incluso si existingFoto tenía algo pero se borró/nunca hubo
+        foto: fotoFilename || null 
       };
 
       // 3. Crear o Actualizar el producto
       let result;
-      if (product && product.id) { // Asegurarse que product y product.id existen para actualizar
-        // Actualizar producto existente
+      if (isEditing) { // Usar la variable isEditing
         result = await ProductService.updateProduct(product.id, productData);
       } else {
-        // Crear nuevo producto
         result = await ProductService.createProduct(productData);
       }
 
@@ -128,25 +129,30 @@ const ProductForm = ({ product = null, onSave, onCancel }) => {
       if (onSave) onSave(result); // Llamar al callback de éxito
 
     } catch (err) {
-      // Manejar errores de la creación/actualización del producto
-      setError(err.detail || err.message || 'Error al guardar el producto');
+      // Captura errores de validación o de API
+      setError(err.message || 'Error al guardar el producto'); // Mostrar el mensaje de error específico
       setLoading(false);
-      setUploading(false); // Asegurarse que uploading esté en false si hay error
+      setUploading(false);
     }
   };
 
-  // URL base del backend para mostrar imágenes existentes
-  // Usar API.defaults.baseURL si está configurado, sino el valor por defecto
   const imageBaseUrl = `${API.defaults.baseURL || 'http://localhost:8000'}/static/product_images/`;
 
+  // --- Lógica para la etiqueta de la foto ---
+  const fotoLabelText = () => {
+      if (!isEditing) return 'Foto del Producto*:'; // Requerido para nuevos
+      if (isEditing && !existingFoto) return 'Foto del Producto*:'; // Requerido si no tiene foto
+      return 'Foto del Producto (Opcional):'; // Opcional si ya tiene foto
+  };
 
   return (
     <div className="product-form">
-      <h2>{product ? 'Editar Producto' : 'Nuevo Producto'}</h2>
-      {error && <p className="error">{error}</p>}
+      <h2>{isEditing ? 'Editar Producto' : 'Nuevo Producto'}</h2>
+      {/* Mostrar el error general del formulario */}
+      {error && <p className="error" style={{ marginBottom: '15px' }}>{error}</p>}
       <form onSubmit={handleSubmit}>
-        {/* ... (campos: nombre, precio, stock, etc.) ... */}
-         <div className="form-group">
+        {/* ... (campos: nombre, precio, stock, etc. sin cambios) ... */}
+        <div className="form-group">
             <label htmlFor="nombre">Nombre*:</label>
             <input type="text" id="nombre" name="nombre" value={formData.nombre} onChange={handleChange} required disabled={loading}/>
         </div>
@@ -169,16 +175,16 @@ const ProductForm = ({ product = null, onSave, onCancel }) => {
 
         {/* --- Campo de Imagen Modificado --- */}
         <div className="form-group">
-          <label htmlFor="foto">Foto del Producto:</label>
+          {/* --- Etiqueta dinámica --- */}
+          <label htmlFor="foto">{fotoLabelText()}</label>
           {/* Mostrar imagen actual si existe Y no hay una nueva seleccionada */}
           {existingFoto && !selectedFile && (
               <div style={{ marginBottom: '10px' }}>
-                  <img 
-                      src={`<span class="math-inline">\{imageBaseUrl\}</span>{existingFoto}`} 
-                      alt={`Imagen actual de ${formData.nombre || 'producto'}`} 
-                      style={{ maxWidth: '100px', maxHeight: '100px', display: 'block', border: '1px solid #ccc' }} 
-                      // Añadir manejo de error por si la imagen no carga
-                      onError={(e) => { e.target.style.display = 'none'; /* O mostrar placeholder */ }}
+                  <img
+                      src={`${imageBaseUrl}${existingFoto}`}
+                      alt={`Imagen actual de ${formData.nombre || 'producto'}`}
+                      style={{ maxWidth: '100px', maxHeight: '100px', display: 'block', border: '1px solid #ccc' }}
+                      onError={(e) => { e.target.style.display = 'none'; }}
                   />
                   <small>Imagen actual: {existingFoto}</small>
               </div>
@@ -186,10 +192,10 @@ const ProductForm = ({ product = null, onSave, onCancel }) => {
           {/* Mostrar preview de imagen nueva si se seleccionó */}
            {selectedFile && (
                <div style={{ marginBottom: '10px' }}>
-                   <img 
-                       src={URL.createObjectURL(selectedFile)} 
-                       alt="Vista previa de la nueva imagen" 
-                       style={{ maxWidth: '100px', maxHeight: '100px', display: 'block', border: '1px solid #ccc' }} 
+                   <img
+                       src={URL.createObjectURL(selectedFile)}
+                       alt="Vista previa de la nueva imagen"
+                       style={{ maxWidth: '100px', maxHeight: '100px', display: 'block', border: '1px solid #ccc' }}
                        onLoad={() => URL.revokeObjectURL(selectedFile)} // Limpiar object URL después de cargar
                    />
                     <small>Nueva imagen seleccionada: {selectedFile.name}</small>
@@ -197,15 +203,21 @@ const ProductForm = ({ product = null, onSave, onCancel }) => {
            )}
 
           <input
-            type="file" // Cambiado a file
+            type="file"
             id="foto"
             name="foto"
-            accept="image/*" // Aceptar solo imágenes
-            onChange={handleFileChange} // Usar el nuevo manejador
-            disabled={loading} // Deshabilitar mientras guarda/sube
+            accept="image/*"
+            onChange={handleFileChange}
+            disabled={loading}
           />
-           {uploading && <p>Subiendo imagen...</p>} 
-           <small>Selecciona una imagen para subir o cambiar la actual.</small>
+           {uploading && <p className="uploading-message">Subiendo imagen...</p>}
+           {/* --- Mensaje de ayuda --- */}
+            <small style={{ marginTop: '5px', display: 'block', color: '#6c757d' }}>
+               {isEditing && existingFoto
+                   ? 'Selecciona una imagen para reemplazar la actual (opcional).'
+                   : 'Selecciona una imagen para el producto (obligatorio).'
+               }
+            </small>
         </div>
          {/* --- Fin Campo de Imagen --- */}
 
@@ -216,7 +228,7 @@ const ProductForm = ({ product = null, onSave, onCancel }) => {
 
         <div className="buttons-container" style={{ marginTop: '15px', display: 'flex', gap: '10px' }}>
           <button type="submit" disabled={loading}>
-            {loading ? (uploading ? 'Subiendo...' : 'Guardando...') : (product ? 'Actualizar Producto' : 'Crear Producto')}
+            {loading ? (uploading ? 'Subiendo...' : 'Guardando...') : (isEditing ? 'Actualizar Producto' : 'Crear Producto')}
           </button>
           <button type="button" onClick={onCancel} className="cancel-button" disabled={loading}>
             Cancelar

@@ -39,7 +39,7 @@ const Products = () => {
 
   return (
     <div className="products-page">
-      <h1>Gestión de Productos</h1>
+      
       
       <div className="product-actions">
         {isAdmin() && (
