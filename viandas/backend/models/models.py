@@ -60,7 +60,7 @@ class LineOfSale(Base):
     id = Column(Integer, primary_key=True, index=True)
     cantidad = Column(Integer, nullable=False)
     numeroDeLinea = Column(Integer, nullable=False)
-    precioActual = Column(Numeric(10, 2), nullable=False)
+    precio = Column(Numeric(10, 2), nullable=False) 
     
     sale_id = Column(Integer, ForeignKey("sales.id"))
     product_id = Column(Integer, ForeignKey("products.id"))
