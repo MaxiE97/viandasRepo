@@ -31,6 +31,23 @@ const Admin = () => {
     }
   }, []);
 
+  // Función para formatear números al estilo 'es-AR' (punto miles, coma decimales, 2 decimales)
+  const formatPriceArgentina = (value) => {
+    // Convertir a número. Maneja null, undefined y strings que puedan venir de la API o Decimal.
+    const number = Number(value);
+
+    // Si no es un número válido (o era null/undefined), devolver 'N/A' o un string vacío
+    if (isNaN(number) || value === null || value === undefined) {
+        return 'N/A'; // O podrías devolver '0,00' o '' según prefieras
+    }
+
+    // Usar toLocaleString con el locale 'es-AR' y opciones para asegurar 2 decimales
+    return number.toLocaleString('es-AR', {
+        minimumFractionDigits: 2, // Siempre mostrar 2 decimales
+        maximumFractionDigits: 2  // No mostrar más de 2 decimales
+    });
+  };
+
   useEffect(() => {
     if (!authLoading && isAdmin()) {
       fetchProducts();
@@ -144,7 +161,7 @@ const Admin = () => {
                           </span>
                         )}
                       </td>
-                      <td data-label="Precio">${product.precioActual?.toFixed(2)}</td>
+                      <td data-label="Precio">$ {formatPriceArgentina(product.precioActual)}</td>
                       <td data-label="Stock">{product.stock}</td>
                       <td data-label="Stock Mínimo">{product.stockMinimo}</td>
                       <td data-label="Visible">{product.mostrarEnSistema ? 'Sí' : 'No'}</td>

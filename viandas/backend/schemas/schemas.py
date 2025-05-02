@@ -1,9 +1,10 @@
 # viandas/backend/schemas/schemas.py
-# (COMPLETO Y CORREGIDO para Soft Delete)
+# (COMPLETO - Modificado para usar Decimal en precios)
 
 from pydantic import BaseModel, EmailStr, Field
 from datetime import date
 from typing import Optional, List
+from decimal import Decimal # ¡Importar Decimal!
 
 # --------------------
 # User Schemas
@@ -40,14 +41,14 @@ class TokenData(BaseModel):
 # --------------------
 class ProductBase(BaseModel):
     nombre: str
-    precioActual: float = Field(..., gt=0)
+    # --- CAMBIO: Usar Decimal ---
+    precioActual: Decimal = Field(..., gt=0, decimal_places=2)
+    # --- FIN CAMBIO ---
     detalle: Optional[str] = None
     mostrarEnSistema: Optional[bool] = True
     stock: int = Field(..., ge=0)
     stockMinimo: int = Field(..., ge=0)
     foto: Optional[str] = None
-    # is_active es manejado por el modelo al crear,
-    # pero lo incluimos aquí para claridad y para ProductUpdate
     is_active: Optional[bool] = True # Este es el is_active del producto
 
 class ProductCreate(ProductBase):
@@ -57,7 +58,9 @@ class ProductCreate(ProductBase):
 class ProductUpdate(BaseModel):
     # Esquema específico para actualizar, todos los campos son opcionales
     nombre: Optional[str] = None
-    precioActual: Optional[float] = Field(None, gt=0)
+    # --- CAMBIO: Usar Decimal ---
+    precioActual: Optional[Decimal] = Field(None, gt=0, decimal_places=2)
+    # --- FIN CAMBIO ---
     detalle: Optional[str] = None
     mostrarEnSistema: Optional[bool] = None
     stock: Optional[int] = Field(None, ge=0)
@@ -69,6 +72,9 @@ class Product(ProductBase):
     # Esquema para devolver un producto desde la API
     id: int
     is_active: bool # Asegurar que siempre se devuelva el estado
+    # --- CAMBIO: Usar Decimal ---
+    precioActual: Decimal
+    # --- FIN CAMBIO ---
 
     class Config:
         from_attributes = True # Habilitar modo ORM
@@ -81,11 +87,14 @@ class LineOfSaleBase(BaseModel):
 
 class LineOfSaleCreate(LineOfSaleBase):
     product_id: int
+    # El precio se toma del producto en el backend al crear la línea
 
 class LineOfSale(LineOfSaleBase):
     id: int
     numeroDeLinea: Optional[int] = None
-    precio: Optional[float] = None
+    # --- CAMBIO: Usar Decimal ---
+    precio: Optional[Decimal] = None # El precio con el que se vendió
+    # --- FIN CAMBIO ---
 
     class Config:
         from_attributes = True
@@ -109,10 +118,10 @@ class LineOfSaleFull(BaseModel):
     id: int
     cantidad: int
     numeroDeLinea: Optional[int] = None
-    precio: float
-    # Product aquí devolverá el producto completo, incluyendo su estado is_active
-    # lo cual está bien para mostrar ventas pasadas.
-    product: Product # Usa el schema Product definido arriba
+    # --- CAMBIO: Usar Decimal ---
+    precio: Decimal # Precio al momento de la venta
+    # --- FIN CAMBIO ---
+    product: Product # Usa el schema Product definido arriba (que ya usa Decimal)
 
     class Config:
         from_attributes = True
@@ -128,19 +137,22 @@ class SaleAdminView(BaseModel):
     medioPago: Optional[str]
     pagado: bool
     user: Optional[User] = None # Puede ser null para ventas de caja
-    line_of_sales: List[LineOfSaleFull] # Usa LineOfSaleFull
+    line_of_sales: List[LineOfSaleFull] # Usa LineOfSaleFull (que ya usa Decimal)
 
     class Config:
         from_attributes = True
 
 
-# --- NUEVOS SCHEMAS PARA EL RESUMEN HISTÓRICO ---
+# --- SCHEMAS PARA EL RESUMEN HISTÓRICO ---
 
 class ProductPerformanceSummary(BaseModel):
     """Schema para el resumen de rendimiento de un solo producto."""
     product_name: str
     total_units_sold: int
-    total_revenue: float
+    # --- CAMBIO: Usar Decimal ---
+    # SQLAlchemy sumará Numeric, resultando en Decimal.
+    total_revenue: Decimal
+    # --- FIN CAMBIO ---
 
     class Config:
         from_attributes = True # Necesario si los datos vienen de un ORM con esos nombres
@@ -148,4 +160,6 @@ class ProductPerformanceSummary(BaseModel):
 class HistoricalSummaryResponse(BaseModel):
     """Schema para la respuesta completa del resumen histórico."""
     products: List[ProductPerformanceSummary]
-    overall_total_revenue: float
+    # --- CAMBIO: Usar Decimal ---
+    overall_total_revenue: Decimal
+    # --- FIN CAMBIO ---

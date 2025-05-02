@@ -313,13 +313,16 @@ def crear_venta_en_caja(
     """
     Crea una venta directa en caja. Descuenta stock. Valida producto activo. (Admin)
     """
-    usuario_caja_id = 5 # Considera buscarlo dinámicamente
-    db_user_caja = db.query(User).filter(User.id == usuario_caja_id).first()
+    caja_user_email = "caja@user.com" 
+    db_user_caja = db.query(User).filter(User.email == caja_user_email).first()
+
+
     if not db_user_caja:
          raise HTTPException(
-             status_code=status.HTTP_404_NOT_FOUND,
-             detail=f"Usuario de caja con ID {usuario_caja_id} no encontrado."
+             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Usuario de sistema para ventas en caja ('{caja_user_email}') no encontrado. Verifica la configuración inicial."
          )
+    usuario_caja_id = db_user_caja.id
 
     if not venta_data.medioPago or venta_data.medioPago not in ["Efectivo", "Transferencia"]:
          raise HTTPException(

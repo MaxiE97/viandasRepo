@@ -13,6 +13,9 @@ import {
 import Modal from '../components/Modal';
 import CajaSaleForm from '../components/CajaSaleForm';
 
+
+
+
 // Helper formatDateToYYYYMMDD (sin cambios)
 const formatDateToYYYYMMDD = (date) => {
     if (!date) return '';
@@ -27,6 +30,25 @@ const formatDateToYYYYMMDD = (date) => {
     if (month.length < 2) month = '0' + month; if (day.length < 2) day = '0' + day;
     return [year, month, day].join('-');
 };
+
+// Función para formatear números al estilo 'es-AR' (punto miles, coma decimales, 2 decimales)
+const formatPriceArgentina = (value) => {
+    // Convertir a número. Maneja null, undefined y strings que puedan venir de la API o Decimal.
+    const number = Number(value);
+
+    // Si no es un número válido (o era null/undefined), devolver 'N/A' o un string vacío
+    if (isNaN(number) || value === null || value === undefined) {
+        return 'N/A'; // O podrías devolver '0,00' o '' según prefieras
+    }
+
+    // Usar toLocaleString con el locale 'es-AR' y opciones para asegurar 2 decimales
+    return number.toLocaleString('es-AR', {
+        minimumFractionDigits: 2, // Siempre mostrar 2 decimales
+        maximumFractionDigits: 2  // No mostrar más de 2 decimales
+    });
+};
+
+
 
 // Componente SalesTable (sin cambios)
 const SalesTable = ({ title, sales, actions }) => {
@@ -313,7 +335,7 @@ const AdminSales = () => {
                                 <ul className="product-summary-list">
                                     {historicalSummary.products.map((prod) => (
                                         <li key={prod.product_name} className="product-summary-item">
-                                            <strong>{prod.product_name}:</strong> {prod.total_units_sold} unidades | {formatCurrency(prod.total_revenue)} generados
+                                            <strong>{prod.product_name}:</strong> {prod.total_units_sold} unidades | $ {formatPriceArgentina(prod.total_revenue)} generados
                                         </li>
                                     ))}
                                 </ul>
@@ -321,7 +343,7 @@ const AdminSales = () => {
                                 <p>No hay datos de ventas registradas para mostrar.</p>
                             )}
                             <p className="overall-total">
-                                <strong>Ingresos Totales Históricos (Ventas Registradas): {formatCurrency(historicalSummary.overall_total_revenue)}</strong>
+                                <strong>Ingresos Totales Históricos (Ventas Registradas): $ {formatPriceArgentina(historicalSummary.overall_total_revenue)}</strong>
                             </p>
                         </>
                     ) : (
